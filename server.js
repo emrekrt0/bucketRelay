@@ -63,7 +63,15 @@ class WebSocketServer {
 
     handleConnection(ws, req) {
         const clientId = ++this.clientIdCounter;
-        const ip = req.socket.remoteAddress;
+
+        // Extract real IP (handle proxy and IPv6-mapped IPv4)
+        const forwarded = req.headers['x-forwarded-for'];
+        let ip = forwarded ? forwarded.split(',')[0].trim() : req.socket.remoteAddress;
+
+        // Clean up IPv6-mapped IPv4 (::ffff:192.168.1.1 -> 192.168.1.1)
+        if (ip && ip.startsWith('::ffff:')) {
+            ip = ip.substring(7);
+        }
 
         logger.connectionOpened(clientId, ip);
 

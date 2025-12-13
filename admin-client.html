@@ -61,7 +61,8 @@
         }
 
         input,
-        select {
+        select,
+        textarea {
             width: 100%;
             padding: 10px;
             border: none;
@@ -70,10 +71,17 @@
             margin-bottom: 10px;
             background: rgba(255, 255, 255, 0.1);
             color: #fff;
+            font-family: inherit;
         }
 
-        input::placeholder {
+        input::placeholder,
+        textarea::placeholder {
             color: rgba(255, 255, 255, 0.5);
+        }
+
+        textarea {
+            min-height: 60px;
+            resize: vertical;
         }
 
         button {
@@ -102,6 +110,11 @@
             color: #fff;
         }
 
+        button.send {
+            background: #00d9ff;
+            color: #1a1a2e;
+        }
+
         .grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -111,7 +124,7 @@
         .grid-2 {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
+            gap: 10px;
         }
 
         .stat-box {
@@ -238,6 +251,13 @@
             margin-bottom: 12px;
             letter-spacing: 1px;
         }
+
+        label {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 12px;
+            opacity: 0.7;
+        }
     </style>
 </head>
 
@@ -251,7 +271,8 @@
 
         <div class="card">
             <h2>🔐 Connection</h2>
-            <input type="text" id="wsUrl" value="ws://localhost:8080" placeholder="WebSocket URL">
+            <input type="text" id="wsUrl" value="wss://bucketrelay-production.up.railway.app"
+                placeholder="WebSocket URL">
             <div class="row">
                 <input type="text" id="adminUsername" placeholder="Admin Username">
                 <input type="password" id="adminPassword" placeholder="Admin Password">
@@ -306,6 +327,34 @@
                 </div>
             </div>
 
+            <!-- Test Broadcast Sender -->
+            <div class="card">
+                <h2>📡 Send Test Broadcast</h2>
+                <div class="grid-2">
+                    <div>
+                        <label>Title *</label>
+                        <input type="text" id="bcTitle" placeholder="Breaking: Something happened">
+                    </div>
+                    <div>
+                        <label>Source *</label>
+                        <input type="text" id="bcSource" placeholder="binance, coinbase, etc.">
+                    </div>
+                </div>
+                <label>URL *</label>
+                <input type="text" id="bcUrl" placeholder="https://example.com/article">
+                <div class="grid-2">
+                    <div>
+                        <label>Icon URL *</label>
+                        <input type="text" id="bcIcon" placeholder="https://example.com/icon.png">
+                    </div>
+                    <div>
+                        <label>Image URL *</label>
+                        <input type="text" id="bcImage" placeholder="https://example.com/image.jpg">
+                    </div>
+                </div>
+                <button class="send" onclick="sendBroadcast()">📤 Send Broadcast</button>
+            </div>
+
             <div class="card">
                 <h2>👥 User Management</h2>
                 <p style="margin-bottom: 12px; opacity: 0.6; font-size: 12px;">
@@ -333,9 +382,10 @@
                         <tr>
                             <th>Username</th>
                             <th>Role</th>
-                            <th>IP Address</th>
-                            <th>Connected For</th>
-                            <th>Messages Received</th>
+                            <th>Filters</th>
+                            <th>IP</th>
+                            <th>Connected</th>
+                            <th>Msgs</th>
                         </tr>
                     </thead>
                     <tbody id="usersTable"></tbody>
@@ -360,7 +410,6 @@
             item.className = `log-item ${type}`;
             item.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
             el.insertBefore(item, el.firstChild);
-            // Keep only last 50 logs
             while (el.children.length > 50) el.removeChild(el.lastChild);
         }
 
@@ -373,10 +422,8 @@
 
         function formatDuration(seconds) {
             if (seconds < 60) return `${seconds}s`;
-            if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-            const h = Math.floor(seconds / 3600);
-            const m = Math.floor((seconds % 3600) / 60);
-            return `${h}h ${m}m`;
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+            return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
         }
 
         function connect() {
@@ -390,35 +437,26 @@
             ws = new WebSocket(url);
 
             ws.onopen = () => {
-                log('Connected to server');
-                setTimeout(() => ws.send(`login ${username}`), 100);
+                log('Connected');
+                setTimeout(() => ws.send(`login ${username} [*]`), 100);
             };
 
             ws.onmessage = (e) => {
-                try {
-                    handleMessage(JSON.parse(e.data));
-                } catch (err) {
-                    log(e.data);
-                }
+                try { handleMessage(JSON.parse(e.data)); }
+                catch (err) { log(e.data); }
             };
 
-            ws.onclose = () => {
-                log('Disconnected', 'error');
-                updateStatus(false);
-            };
-
+            ws.onclose = () => { log('Disconnected', 'error'); updateStatus(false); };
             ws.onerror = () => log('Connection error', 'error');
         }
 
-        function disconnect() {
-            if (ws) ws.close();
-        }
+        function disconnect() { if (ws) ws.close(); }
 
         function handleMessage(data) {
             switch (data.type) {
                 case 'auth_success':
                     if (!data.isAdmin) {
-                        log('Access denied - not an admin account!', 'error');
+                        log('Not an admin account!', 'error');
                         ws.close();
                         return;
                     }
@@ -426,46 +464,38 @@
                     updateStatus(true);
                     getStats();
                     break;
-
                 case 'stats':
                     updateStats(data.data);
                     break;
-
                 case 'admin_response':
                     log(`✓ ${data.message}`, 'success');
                     getStats();
                     break;
-
+                case 'broadcast_sent':
+                    log(`✓ Broadcast sent to ${data.recipients} clients`, 'success');
+                    break;
                 case 'error':
                     log(`✗ ${data.message}`, 'error');
                     break;
-
                 case 'broadcast':
-                    log(`📡 Broadcast received: ${data.data.title}`);
+                    log(`📡 Received: ${data.data.title}`);
                     break;
-
                 default:
                     log(JSON.stringify(data));
             }
         }
 
         function updateStats(stats) {
-            // Current connections
             document.getElementById('currentConnections').textContent = stats.currentConnections;
             document.getElementById('authenticatedUsers').textContent = stats.authenticatedUsers;
             document.getElementById('broadcasters').textContent = stats.broadcasters;
             document.getElementById('admins').textContent = stats.admins || 0;
-
-            // Lifetime stats
             document.getElementById('totalConnections').textContent = stats.totalConnections;
             document.getElementById('totalDisconnections').textContent = stats.totalDisconnections;
             document.getElementById('totalBroadcasts').textContent = stats.totalBroadcasts;
             document.getElementById('totalMessagesDelivered').textContent = stats.totalMessagesDelivered;
-
-            // Uptime
             document.getElementById('serverUptime').textContent = `Uptime: ${formatDuration(Math.floor(stats.uptime))}`;
 
-            // Users table
             const tbody = document.getElementById('usersTable');
             const noUsersMsg = document.getElementById('noUsersMsg');
             tbody.innerHTML = '';
@@ -477,11 +507,13 @@
                 stats.connectedUsers.forEach(u => {
                     const role = u.isAdmin ? 'admin' : u.isBroadcaster ? 'broadcaster' : 'receiver';
                     const label = u.isAdmin ? 'Admin' : u.isBroadcaster ? 'Broadcaster' : 'Receiver';
+                    const filters = (u.sourceFilters || ['*']).join(', ');
                     tbody.innerHTML += `
                         <tr>
                             <td><strong>${u.username}</strong></td>
                             <td><span class="badge ${role}">${label}</span></td>
-                            <td style="opacity: 0.7; font-size: 12px;">${u.ip || 'N/A'}</td>
+                            <td style="opacity: 0.7; font-size: 11px;">${filters}</td>
+                            <td style="opacity: 0.7; font-size: 11px;">${u.ip || 'N/A'}</td>
                             <td>${formatDuration(u.connectedFor)}</td>
                             <td>${u.messagesReceived}</td>
                         </tr>
@@ -494,11 +526,29 @@
             if (ws?.readyState === WebSocket.OPEN) ws.send('stats');
         }
 
+        function sendBroadcast() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) { alert('Not connected'); return; }
+
+            const data = {
+                title: document.getElementById('bcTitle').value.trim(),
+                url: document.getElementById('bcUrl').value.trim(),
+                source: document.getElementById('bcSource').value.trim(),
+                icon: document.getElementById('bcIcon').value.trim(),
+                image: document.getElementById('bcImage').value.trim()
+            };
+
+            for (const [key, value] of Object.entries(data)) {
+                if (!value) { alert(`Missing: ${key}`); return; }
+            }
+
+            ws.send(JSON.stringify(data));
+            log('Sending broadcast...');
+        }
+
         function addUser() {
             const username = document.getElementById('newUser').value.trim();
             const role = document.getElementById('newUserRole').value;
             if (!username) { alert('Enter username'); return; }
-
             const cmd = role === 'broadcaster' ? 'add_broadcaster' : 'add_user';
             ws.send(`admin ${cmd} ${adminPassword} ${username}`);
             document.getElementById('newUser').value = '';
@@ -518,7 +568,6 @@
             document.getElementById('removeUserName').value = '';
         }
 
-        // Auto-refresh stats every 5 seconds
         setInterval(getStats, 5000);
     </script>
 </body>
