@@ -47,12 +47,15 @@ class RateLimiter {
 
 // Validate broadcast message format
 function validateBroadcastMessage(data) {
-    const requiredFields = ['title', 'url', 'icon', 'source', 'image'];
+    // Only title and source are required
+    const requiredFields = ['title', 'source'];
+    const optionalFields = ['url', 'icon', 'image'];
 
     if (typeof data !== 'object' || data === null) {
         return { valid: false, error: 'Message must be an object' };
     }
 
+    // Check required fields
     for (const field of requiredFields) {
         if (!(field in data)) {
             return { valid: false, error: `Missing required field: ${field}` };
@@ -65,8 +68,17 @@ function validateBroadcastMessage(data) {
         }
     }
 
-    // Validate URLs
-    if (!isValidUrl(data.url)) {
+    // Check optional fields (if provided, must be string)
+    for (const field of optionalFields) {
+        if (field in data && data[field] !== null && data[field] !== undefined) {
+            if (typeof data[field] !== 'string') {
+                return { valid: false, error: `Field '${field}' must be a string` };
+            }
+        }
+    }
+
+    // Validate URL if provided
+    if (data.url && data.url.trim() && !isValidUrl(data.url)) {
         return { valid: false, error: 'Invalid URL format' };
     }
 
@@ -119,10 +131,10 @@ function formatBroadcast(data) {
         type: 'broadcast',
         data: {
             title: sanitizeString(data.title),
-            url: sanitizeString(data.url),
-            icon: sanitizeString(data.icon),
             source: sanitizeString(data.source),
-            image: sanitizeString(data.image)
+            url: sanitizeString(data.url || ''),
+            icon: sanitizeString(data.icon || ''),
+            image: sanitizeString(data.image || '')
         },
         timestamp: Date.now()
     };

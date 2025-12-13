@@ -340,15 +340,15 @@
                         <input type="text" id="bcSource" placeholder="binance, coinbase, etc.">
                     </div>
                 </div>
-                <label>URL *</label>
+                <label>URL (optional)</label>
                 <input type="text" id="bcUrl" placeholder="https://example.com/article">
                 <div class="grid-2">
                     <div>
-                        <label>Icon URL *</label>
+                        <label>Icon URL (optional)</label>
                         <input type="text" id="bcIcon" placeholder="https://example.com/icon.png">
                     </div>
                     <div>
-                        <label>Image URL *</label>
+                        <label>Image URL (optional)</label>
                         <input type="text" id="bcImage" placeholder="https://example.com/image.jpg">
                     </div>
                 </div>
@@ -537,9 +537,9 @@
                 image: document.getElementById('bcImage').value.trim()
             };
 
-            for (const [key, value] of Object.entries(data)) {
-                if (!value) { alert(`Missing: ${key}`); return; }
-            }
+            // Only title and source are required
+            if (!data.title) { alert('Title is required'); return; }
+            if (!data.source) { alert('Source is required'); return; }
 
             ws.send(JSON.stringify(data));
             log('Sending broadcast...');
