@@ -51,6 +51,19 @@ class Database {
         }
     }
 
+    // Check if user is an admin
+    async isAdmin(username) {
+        try {
+            const result = await this.query(
+                'SELECT is_admin FROM users WHERE username = $1 AND is_active = TRUE',
+                [username]
+            );
+            return result.rows.length > 0 && result.rows[0].is_admin;
+        } catch (error) {
+            return false;
+        }
+    }
+
     // Add user (receiver only by default)
     async addUser(username, isBroadcaster = false) {
         const result = await this.query(
@@ -67,6 +80,17 @@ class Database {
         const result = await this.query(
             `INSERT INTO users (username, is_broadcaster) VALUES ($1, TRUE) 
              ON CONFLICT (username) DO UPDATE SET is_broadcaster = TRUE, is_active = TRUE 
+             RETURNING id`,
+            [username]
+        );
+        return result.rows[0];
+    }
+
+    // Add admin (full permissions)
+    async addAdmin(username) {
+        const result = await this.query(
+            `INSERT INTO users (username, is_broadcaster, is_admin) VALUES ($1, TRUE, TRUE) 
+             ON CONFLICT (username) DO UPDATE SET is_broadcaster = TRUE, is_admin = TRUE, is_active = TRUE 
              RETURNING id`,
             [username]
         );

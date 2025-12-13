@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Panel - WebSocket Broadcaster</title>
+    <title>Admin Panel - WebSocket</title>
     <style>
         * {
             margin: 0;
@@ -13,10 +13,11 @@
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             min-height: 100vh;
             padding: 20px;
+            color: #fff;
         }
 
         .container {
@@ -25,52 +26,62 @@
         }
 
         .card {
-            background: white;
+            background: rgba(255, 255, 255, 0.1);
             border-radius: 12px;
-            padding: 24px;
-            margin-bottom: 20px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            padding: 20px;
+            margin-bottom: 16px;
+            backdrop-filter: blur(10px);
         }
 
         h1 {
-            color: #f5576c;
-            margin-bottom: 20px;
+            color: #f39c12;
+            margin-bottom: 16px;
         }
 
         h2 {
-            color: #333;
-            margin-bottom: 16px;
-            font-size: 18px;
+            color: #fff;
+            margin-bottom: 12px;
+            font-size: 16px;
         }
 
-        .input-group {
-            margin-bottom: 16px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 6px;
+        .status {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
             font-weight: 600;
-            color: #555;
+        }
+
+        .status.connected {
+            background: #27ae60;
+        }
+
+        .status.disconnected {
+            background: #e74c3c;
         }
 
         input,
         select {
             width: 100%;
-            padding: 10px 14px;
-            border: 2px solid #e5e7eb;
+            padding: 10px;
+            border: none;
             border-radius: 6px;
             font-size: 14px;
-            font-family: inherit;
+            margin-bottom: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
         }
 
         button {
-            background: #f5576c;
-            color: white;
+            background: #f39c12;
+            color: #1a1a2e;
             border: none;
-            padding: 12px 24px;
+            padding: 10px 20px;
             border-radius: 6px;
-            font-size: 14px;
             font-weight: 600;
             cursor: pointer;
             margin-right: 8px;
@@ -78,116 +89,154 @@
         }
 
         button:hover {
-            background: #e04858;
+            background: #e67e22;
+        }
+
+        button.danger {
+            background: #e74c3c;
+            color: #fff;
         }
 
         button.secondary {
-            background: #6b7280;
-        }
-
-        button.secondary:hover {
-            background: #4b5563;
+            background: #5d6d7e;
+            color: #fff;
         }
 
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 16px;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
         }
 
-        .stat-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px;
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .stat-box {
+            background: rgba(243, 156, 18, 0.2);
+            padding: 16px;
             border-radius: 8px;
             text-align: center;
         }
 
+        .stat-box.blue {
+            background: rgba(52, 152, 219, 0.2);
+        }
+
+        .stat-box.green {
+            background: rgba(39, 174, 96, 0.2);
+        }
+
+        .stat-box.purple {
+            background: rgba(155, 89, 182, 0.2);
+        }
+
         .stat-number {
-            font-size: 32px;
+            font-size: 28px;
             font-weight: 700;
-            margin-bottom: 8px;
+            color: #f39c12;
+        }
+
+        .stat-box.blue .stat-number {
+            color: #3498db;
+        }
+
+        .stat-box.green .stat-number {
+            color: #27ae60;
+        }
+
+        .stat-box.purple .stat-number {
+            color: #9b59b6;
         }
 
         .stat-label {
-            font-size: 14px;
-            opacity: 0.9;
+            font-size: 11px;
+            opacity: 0.8;
+            margin-top: 4px;
+        }
+
+        .log {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 6px;
+            padding: 12px;
+            max-height: 150px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .log-item {
+            margin-bottom: 4px;
+            padding: 4px;
+            border-radius: 4px;
+        }
+
+        .log-item.success {
+            background: rgba(39, 174, 96, 0.3);
+        }
+
+        .log-item.error {
+            background: rgba(231, 76, 60, 0.3);
+        }
+
+        .row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .row input {
+            flex: 1;
+            margin-bottom: 0;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
+            font-size: 13px;
         }
 
         th,
         td {
-            padding: 12px;
+            padding: 10px;
             text-align: left;
-            border-bottom: 1px solid #e5e7eb;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         th {
-            background: #f9fafb;
-            font-weight: 600;
-            color: #374151;
+            color: #f39c12;
+            font-size: 11px;
+            text-transform: uppercase;
         }
 
         .badge {
             display: inline-block;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 12px;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 10px;
             font-weight: 600;
         }
 
-        .badge.active {
-            background: #d1fae5;
-            color: #065f46;
-        }
-
-        .badge.inactive {
-            background: #fee2e2;
-            color: #991b1b;
+        .badge.admin {
+            background: #9b59b6;
         }
 
         .badge.broadcaster {
-            background: #dbeafe;
-            color: #1e40af;
+            background: #3498db;
         }
 
-        .log {
-            background: #f9fafb;
-            border: 1px solid #e5e7eb;
-            border-radius: 6px;
-            padding: 16px;
-            max-height: 250px;
-            overflow-y: auto;
-            font-family: 'Courier New', monospace;
-            font-size: 13px;
+        .badge.receiver {
+            background: #27ae60;
         }
 
-        .log-item {
-            margin-bottom: 6px;
-            padding: 4px;
-        }
-
-        .status {
-            display: inline-block;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 16px;
-        }
-
-        .status.connected {
-            background: #10b981;
-            color: white;
-        }
-
-        .status.disconnected {
-            background: #ef4444;
-            color: white;
+        .section-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.5);
+            margin-bottom: 12px;
+            letter-spacing: 1px;
         }
     </style>
 </head>
@@ -195,153 +244,170 @@
 <body>
     <div class="container">
         <div class="card">
-            <h1>⚙️ Admin Panel</h1>
+            <h1>⚙️ Admin Dashboard</h1>
             <div id="statusBadge" class="status disconnected">Disconnected</div>
+            <span id="serverUptime" style="margin-left: 16px; opacity: 0.7; font-size: 13px;"></span>
         </div>
 
         <div class="card">
-            <h2>Connection</h2>
-            <div class="input-group">
-                <label for="wsUrl">WebSocket URL</label>
-                <input type="text" id="wsUrl" value="ws://localhost:8080">
-            </div>
-            <div class="input-group">
-                <label for="adminUsername">Admin Username</label>
-                <input type="text" id="adminUsername" placeholder="admin">
+            <h2>🔐 Connection</h2>
+            <input type="text" id="wsUrl" value="ws://localhost:8080" placeholder="WebSocket URL">
+            <div class="row">
+                <input type="text" id="adminUsername" placeholder="Admin Username">
+                <input type="password" id="adminPassword" placeholder="Admin Password">
             </div>
             <button onclick="connect()">Connect</button>
             <button class="secondary" onclick="disconnect()">Disconnect</button>
-            <button class="secondary" onclick="getStats()">Refresh Stats</button>
+            <button class="secondary" onclick="getStats()">Refresh</button>
         </div>
 
-        <div class="card" id="statsSection" style="display: none;">
-            <h2>Server Statistics</h2>
-            <div class="grid">
-                <div class="stat-card">
-                    <div class="stat-number" id="totalConnections">0</div>
-                    <div class="stat-label">Total Connections</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" id="authenticatedUsers">0</div>
-                    <div class="stat-label">Authenticated Users</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" id="broadcasters">0</div>
-                    <div class="stat-label">Active Broadcasters</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" id="uptime">0s</div>
-                    <div class="stat-label">Server Uptime</div>
+        <div id="dashboardSection" style="display: none;">
+            <div class="card">
+                <div class="section-title">📊 Current Connections</div>
+                <div class="grid">
+                    <div class="stat-box">
+                        <div class="stat-number" id="currentConnections">0</div>
+                        <div class="stat-label">Total Connected</div>
+                    </div>
+                    <div class="stat-box blue">
+                        <div class="stat-number" id="authenticatedUsers">0</div>
+                        <div class="stat-label">Authenticated</div>
+                    </div>
+                    <div class="stat-box green">
+                        <div class="stat-number" id="broadcasters">0</div>
+                        <div class="stat-label">Broadcasters</div>
+                    </div>
+                    <div class="stat-box purple">
+                        <div class="stat-number" id="admins">0</div>
+                        <div class="stat-label">Admins</div>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <div class="card" id="userManagement" style="display: none;">
-            <h2>User Management</h2>
-
-            <h3 style="margin: 20px 0 10px;">Add User to Whitelist</h3>
-            <div style="display: flex; gap: 12px; margin-bottom: 24px;">
-                <input type="text" id="newUsername" placeholder="Username" style="flex: 1;">
-                <button onclick="addUser()">Add User</button>
+            <div class="card">
+                <div class="section-title">📈 Lifetime Statistics</div>
+                <div class="grid">
+                    <div class="stat-box">
+                        <div class="stat-number" id="totalConnections">0</div>
+                        <div class="stat-label">Total Connections</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-number" id="totalDisconnections">0</div>
+                        <div class="stat-label">Disconnections</div>
+                    </div>
+                    <div class="stat-box blue">
+                        <div class="stat-number" id="totalBroadcasts">0</div>
+                        <div class="stat-label">Broadcasts Sent</div>
+                    </div>
+                    <div class="stat-box green">
+                        <div class="stat-number" id="totalMessagesDelivered">0</div>
+                        <div class="stat-label">Messages Delivered</div>
+                    </div>
+                </div>
             </div>
 
-            <h3 style="margin: 20px 0 10px;">Grant Broadcaster Permission</h3>
-            <div style="display: flex; gap: 12px; margin-bottom: 24px;">
-                <input type="text" id="broadcasterUsername" placeholder="Username" style="flex: 1;">
-                <button onclick="addBroadcaster()">Make Broadcaster</button>
+            <div class="card">
+                <h2>👥 User Management</h2>
+                <p style="margin-bottom: 12px; opacity: 0.6; font-size: 12px;">
+                    All commands require admin password for security.
+                </p>
+                <div class="row">
+                    <input type="text" id="newUser" placeholder="Username">
+                    <select id="newUserRole" style="width: 150px;">
+                        <option value="receiver">Receiver</option>
+                        <option value="broadcaster">Broadcaster</option>
+                    </select>
+                    <button onclick="addUser()">Add</button>
+                </div>
+                <div class="row">
+                    <input type="text" id="removeUserName" placeholder="Username to remove/modify">
+                    <button class="danger" onclick="removeUser()">Remove</button>
+                    <button class="secondary" onclick="revokeBroadcaster()">Revoke Broadcaster</button>
+                </div>
             </div>
 
-            <h3 style="margin: 20px 0 10px;">Remove User/Broadcaster</h3>
-            <div style="display: flex; gap: 12px;">
-                <input type="text" id="removeUsername" placeholder="Username" style="flex: 1;">
-                <button class="secondary" onclick="removeUser()">Remove User</button>
-                <button class="secondary" onclick="removeBroadcaster()">Revoke Broadcaster</button>
+            <div class="card">
+                <div class="section-title">📋 Connected Users</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Role</th>
+                            <th>IP Address</th>
+                            <th>Connected For</th>
+                            <th>Messages Received</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTable"></tbody>
+                </table>
+                <p id="noUsersMsg" style="text-align: center; opacity: 0.5; padding: 20px;">No users connected</p>
             </div>
-        </div>
-
-        <div class="card" id="connectedUsers" style="display: none;">
-            <h2>Currently Connected Users</h2>
-            <table id="usersTable">
-                <thead>
-                    <tr>
-                        <th>Username</th>
-                        <th>Role</th>
-                    </tr>
-                </thead>
-                <tbody id="usersTableBody">
-                </tbody>
-            </table>
         </div>
 
         <div class="card">
-            <h2>Activity Log</h2>
+            <h2>📝 Activity Log</h2>
             <div id="log" class="log"></div>
         </div>
     </div>
 
     <script>
         let ws = null;
+        let adminPassword = '';
 
-        function log(message, type = 'info') {
-            const logEl = document.getElementById('log');
+        function log(msg, type = 'info') {
+            const el = document.getElementById('log');
             const item = document.createElement('div');
-            item.className = 'log-item';
-            item.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-            logEl.insertBefore(item, logEl.firstChild);
+            item.className = `log-item ${type}`;
+            item.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            el.insertBefore(item, el.firstChild);
+            // Keep only last 50 logs
+            while (el.children.length > 50) el.removeChild(el.lastChild);
         }
 
         function updateStatus(connected) {
             const badge = document.getElementById('statusBadge');
-            if (connected) {
-                badge.className = 'status connected';
-                badge.textContent = 'Connected';
-                document.getElementById('statsSection').style.display = 'block';
-                document.getElementById('userManagement').style.display = 'block';
-                document.getElementById('connectedUsers').style.display = 'block';
-            } else {
-                badge.className = 'status disconnected';
-                badge.textContent = 'Disconnected';
-                document.getElementById('statsSection').style.display = 'none';
-                document.getElementById('userManagement').style.display = 'none';
-                document.getElementById('connectedUsers').style.display = 'none';
-            }
+            badge.className = `status ${connected ? 'connected' : 'disconnected'}`;
+            badge.textContent = connected ? 'Connected' : 'Disconnected';
+            document.getElementById('dashboardSection').style.display = connected ? 'block' : 'none';
+        }
+
+        function formatDuration(seconds) {
+            if (seconds < 60) return `${seconds}s`;
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            return `${h}h ${m}m`;
         }
 
         function connect() {
             const url = document.getElementById('wsUrl').value;
             const username = document.getElementById('adminUsername').value.trim();
+            adminPassword = document.getElementById('adminPassword').value;
 
-            if (!username) {
-                alert('Please enter admin username');
-                return;
-            }
+            if (!username) { alert('Enter username'); return; }
+            if (!adminPassword) { alert('Enter admin password'); return; }
 
             ws = new WebSocket(url);
 
             ws.onopen = () => {
                 log('Connected to server');
-                setTimeout(() => {
-                    ws.send(`login ${username}`);
-                }, 100);
+                setTimeout(() => ws.send(`login ${username}`), 100);
             };
 
-            ws.onmessage = (event) => {
+            ws.onmessage = (e) => {
                 try {
-                    const data = JSON.parse(event.data);
-                    handleMessage(data);
-                } catch (e) {
-                    log(`Message: ${event.data}`);
+                    handleMessage(JSON.parse(e.data));
+                } catch (err) {
+                    log(e.data);
                 }
             };
 
             ws.onclose = () => {
-                log('Disconnected');
+                log('Disconnected', 'error');
                 updateStatus(false);
             };
 
-            ws.onerror = () => {
-                log('WebSocket error');
-            };
+            ws.onerror = () => log('Connection error', 'error');
         }
 
         function disconnect() {
@@ -351,7 +417,12 @@
         function handleMessage(data) {
             switch (data.type) {
                 case 'auth_success':
-                    log(`Authenticated as ${data.username}`);
+                    if (!data.isAdmin) {
+                        log('Access denied - not an admin account!', 'error');
+                        ws.close();
+                        return;
+                    }
+                    log(`Authenticated as ${data.username} (Admin)`, 'success');
                     updateStatus(true);
                     getStats();
                     break;
@@ -361,106 +432,94 @@
                     break;
 
                 case 'admin_response':
-                    log(`✓ ${data.message}`);
+                    log(`✓ ${data.message}`, 'success');
                     getStats();
                     break;
 
                 case 'error':
-                    log(`✗ Error: ${data.message}`);
+                    log(`✗ ${data.message}`, 'error');
+                    break;
+
+                case 'broadcast':
+                    log(`📡 Broadcast received: ${data.data.title}`);
                     break;
 
                 default:
-                    log(`${data.type}: ${JSON.stringify(data)}`);
+                    log(JSON.stringify(data));
             }
         }
 
         function updateStats(stats) {
-            document.getElementById('totalConnections').textContent = stats.totalConnections;
+            // Current connections
+            document.getElementById('currentConnections').textContent = stats.currentConnections;
             document.getElementById('authenticatedUsers').textContent = stats.authenticatedUsers;
             document.getElementById('broadcasters').textContent = stats.broadcasters;
-            document.getElementById('uptime').textContent = Math.floor(stats.uptime) + 's';
+            document.getElementById('admins').textContent = stats.admins || 0;
 
-            // Update users table
-            const tbody = document.getElementById('usersTableBody');
+            // Lifetime stats
+            document.getElementById('totalConnections').textContent = stats.totalConnections;
+            document.getElementById('totalDisconnections').textContent = stats.totalDisconnections;
+            document.getElementById('totalBroadcasts').textContent = stats.totalBroadcasts;
+            document.getElementById('totalMessagesDelivered').textContent = stats.totalMessagesDelivered;
+
+            // Uptime
+            document.getElementById('serverUptime').textContent = `Uptime: ${formatDuration(Math.floor(stats.uptime))}`;
+
+            // Users table
+            const tbody = document.getElementById('usersTable');
+            const noUsersMsg = document.getElementById('noUsersMsg');
             tbody.innerHTML = '';
 
-            stats.connectedUsers.forEach(user => {
-                const row = tbody.insertRow();
-                row.innerHTML = `
-                    <td>${user.username}</td>
-                    <td>
-                        ${user.isBroadcaster ? '<span class="badge broadcaster">Broadcaster</span>' : '<span class="badge active">User</span>'}
-                    </td>
-                `;
-            });
-
-            log(`Stats updated: ${stats.authenticatedUsers} users online`);
+            if (stats.connectedUsers.length === 0) {
+                noUsersMsg.style.display = 'block';
+            } else {
+                noUsersMsg.style.display = 'none';
+                stats.connectedUsers.forEach(u => {
+                    const role = u.isAdmin ? 'admin' : u.isBroadcaster ? 'broadcaster' : 'receiver';
+                    const label = u.isAdmin ? 'Admin' : u.isBroadcaster ? 'Broadcaster' : 'Receiver';
+                    tbody.innerHTML += `
+                        <tr>
+                            <td><strong>${u.username}</strong></td>
+                            <td><span class="badge ${role}">${label}</span></td>
+                            <td style="opacity: 0.7; font-size: 12px;">${u.ip || 'N/A'}</td>
+                            <td>${formatDuration(u.connectedFor)}</td>
+                            <td>${u.messagesReceived}</td>
+                        </tr>
+                    `;
+                });
+            }
         }
 
         function getStats() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send('stats');
-            }
+            if (ws?.readyState === WebSocket.OPEN) ws.send('stats');
         }
 
         function addUser() {
-            const username = document.getElementById('newUsername').value.trim();
-            if (!username) {
-                alert('Enter username');
-                return;
-            }
+            const username = document.getElementById('newUser').value.trim();
+            const role = document.getElementById('newUserRole').value;
+            if (!username) { alert('Enter username'); return; }
 
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(`admin add_user ${username}`);
-                document.getElementById('newUsername').value = '';
-            }
-        }
-
-        function addBroadcaster() {
-            const username = document.getElementById('broadcasterUsername').value.trim();
-            if (!username) {
-                alert('Enter username');
-                return;
-            }
-
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(`admin add_broadcaster ${username}`);
-                document.getElementById('broadcasterUsername').value = '';
-            }
+            const cmd = role === 'broadcaster' ? 'add_broadcaster' : 'add_user';
+            ws.send(`admin ${cmd} ${adminPassword} ${username}`);
+            document.getElementById('newUser').value = '';
         }
 
         function removeUser() {
-            const username = document.getElementById('removeUsername').value.trim();
-            if (!username) {
-                alert('Enter username');
-                return;
-            }
-
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(`admin remove_user ${username}`);
-                document.getElementById('removeUsername').value = '';
-            }
+            const username = document.getElementById('removeUserName').value.trim();
+            if (!username) { alert('Enter username'); return; }
+            ws.send(`admin remove_user ${adminPassword} ${username}`);
+            document.getElementById('removeUserName').value = '';
         }
 
-        function removeBroadcaster() {
-            const username = document.getElementById('removeUsername').value.trim();
-            if (!username) {
-                alert('Enter username');
-                return;
-            }
-
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(`admin remove_broadcaster ${username}`);
-                document.getElementById('removeUsername').value = '';
-            }
+        function revokeBroadcaster() {
+            const username = document.getElementById('removeUserName').value.trim();
+            if (!username) { alert('Enter username'); return; }
+            ws.send(`admin remove_broadcaster ${adminPassword} ${username}`);
+            document.getElementById('removeUserName').value = '';
         }
 
-        // Auto-refresh stats every 10 seconds when connected
-        setInterval(() => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                getStats();
-            }
-        }, 10000);
+        // Auto-refresh stats every 5 seconds
+        setInterval(getStats, 5000);
     </script>
 </body>
 

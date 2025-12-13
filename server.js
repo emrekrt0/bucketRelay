@@ -20,10 +20,19 @@ class WebSocketServer {
     constructor() {
         this.wss = null;
         this.db = new Database();
-        this.clients = new Map(); // clientId -> { ws, username, isBroadcaster, authenticated, authTimer, ip }
+        this.clients = new Map(); // clientId -> { ws, username, isBroadcaster, isAdmin, authenticated, authTimer, ip, connectedAt, messagesReceived }
         this.rateLimiter = new RateLimiter(RATE_LIMIT_MESSAGES, RATE_LIMIT_WINDOW);
         this.pingInterval = null;
         this.clientIdCounter = 0;
+
+        // Global stats
+        this.stats = {
+            totalConnections: 0,
+            totalDisconnections: 0,
+            totalBroadcasts: 0,
+            totalMessagesDelivered: 0,
+            serverStartedAt: Date.now()
+        };
     }
 
     async start() {
@@ -85,19 +94,25 @@ class WebSocketServer {
             }
         }, AUTH_TIMEOUT_MS);
 
+        this.stats.totalConnections++;
+
         this.clients.set(clientId, {
             ws,
             authenticated: false,
             username: null,
             isBroadcaster: false,
+            isAdmin: false,
+            sourceFilters: ['*'],
             authTimer,
-            ip
+            ip,
+            connectedAt: Date.now(),
+            messagesReceived: 0
         });
 
         // Send welcome message
         ws.send(JSON.stringify({
             type: 'info',
-            message: 'Connected. Please authenticate with: login <username>'
+            message: 'Connected. Authenticate with: login <username> [source1, source2] or login <username> [*]'
         }));
     }
 
@@ -180,7 +195,29 @@ class WebSocketServer {
             return;
         }
 
-        const username = message.substring(6).trim();
+        // Parse: login username [filter1, filter2]
+        const loginContent = message.substring(6).trim();
+
+        // Extract filters if present
+        let username, sourceFilters;
+        const filterMatch = loginContent.match(/^(\S+)\s*\[([^\]]*)\]$/);
+
+        if (filterMatch) {
+            // Has filters: login username [source1, source2]
+            username = filterMatch[1];
+            const filterStr = filterMatch[2].trim();
+            if (filterStr === '') {
+                sourceFilters = []; // Empty = receive nothing
+            } else if (filterStr === '*') {
+                sourceFilters = ['*']; // * = receive all
+            } else {
+                sourceFilters = filterStr.split(',').map(s => s.trim().toLowerCase()).filter(s => s);
+            }
+        } else {
+            // No filters: login username (default to all)
+            username = loginContent;
+            sourceFilters = ['*'];
+        }
 
         // Validate username format
         const validation = validateUsername(username);
@@ -210,19 +247,27 @@ class WebSocketServer {
         // Check if broadcaster
         const isBroadcaster = await this.db.isBroadcaster(validUsername);
 
+        // Check if admin
+        const isAdmin = await this.db.isAdmin(validUsername);
+
         // Authentication successful
         clearTimeout(client.authTimer);
         client.authenticated = true;
         client.username = validUsername;
         client.isBroadcaster = isBroadcaster;
+        client.isAdmin = isAdmin;
+        client.sourceFilters = sourceFilters;
 
         logger.authAttempt(clientId, validUsername, true);
+        logger.info('Source filters set', { username: validUsername, filters: sourceFilters });
 
         client.ws.send(JSON.stringify({
             type: 'auth_success',
             username: validUsername,
             isBroadcaster,
-            message: `Welcome, ${validUsername}! ${isBroadcaster ? 'You can send and receive broadcasts.' : 'You can receive broadcasts.'}`
+            isAdmin,
+            sourceFilters,
+            message: `Welcome, ${validUsername}! Filters: ${sourceFilters.length === 0 ? 'none' : sourceFilters.join(', ')}`
         }));
     }
 
@@ -268,16 +313,30 @@ class WebSocketServer {
             return;
         }
 
-        // Format and send to all authenticated clients
+        // Format and send to all authenticated clients based on their source filters
         const formattedMessage = formatBroadcast(broadcastData);
+        const broadcastSource = broadcastData.source.toLowerCase();
         let recipients = 0;
 
         for (const [id, otherClient] of this.clients.entries()) {
             if (otherClient.authenticated && otherClient.ws.readyState === WebSocket.OPEN) {
+                // Check source filters
+                const filters = otherClient.sourceFilters || ['*'];
+
+                // Empty filters = receive nothing
+                if (filters.length === 0) continue;
+
+                // * = receive all, otherwise check if source matches
+                if (filters[0] !== '*' && !filters.includes(broadcastSource)) continue;
+
                 otherClient.ws.send(JSON.stringify(formattedMessage));
+                otherClient.messagesReceived++;
                 recipients++;
             }
         }
+
+        this.stats.totalBroadcasts++;
+        this.stats.totalMessagesDelivered += recipients;
 
         logger.broadcastSent(client.username, recipients);
 
@@ -293,15 +352,34 @@ class WebSocketServer {
         const client = this.clients.get(clientId);
         if (!client) return;
 
-        // Note: In production, you'd want additional admin role checking
+        // Check if user is an admin
+        if (!client.isAdmin) {
+            client.ws.send(JSON.stringify({
+                type: 'error',
+                message: 'Permission denied. Admin access required.'
+            }));
+            return;
+        }
+
         const parts = message.split(' ');
         const command = parts[1];
-        const target = parts[2];
+        const password = parts[2];
+        const target = parts[3];
+
+        // Check admin password (extra security layer)
+        const adminPassword = process.env.ADMIN_PASSWORD;
+        if (adminPassword && password !== adminPassword) {
+            client.ws.send(JSON.stringify({
+                type: 'error',
+                message: 'Invalid admin password.'
+            }));
+            return;
+        }
 
         if (!target) {
             client.ws.send(JSON.stringify({
                 type: 'error',
-                message: 'Usage: admin <add_user|remove_user|add_broadcaster|remove_broadcaster> <username>'
+                message: 'Usage: admin <command> <password> <username>'
             }));
             return;
         }
@@ -358,14 +436,38 @@ class WebSocketServer {
         const client = this.clients.get(clientId);
         if (!client) return;
 
+        const now = Date.now();
+        const connectedUsers = Array.from(this.clients.values())
+            .filter(c => c.authenticated)
+            .map(c => ({
+                username: c.username,
+                isBroadcaster: c.isBroadcaster,
+                isAdmin: c.isAdmin,
+                sourceFilters: c.sourceFilters,
+                ip: c.ip,
+                connectedFor: Math.floor((now - c.connectedAt) / 1000),
+                messagesReceived: c.messagesReceived
+            }));
+
         const stats = {
-            totalConnections: this.clients.size,
-            authenticatedUsers: Array.from(this.clients.values()).filter(c => c.authenticated).length,
-            broadcasters: Array.from(this.clients.values()).filter(c => c.isBroadcaster).length,
+            // Current connections
+            currentConnections: this.clients.size,
+            authenticatedUsers: connectedUsers.length,
+            broadcasters: connectedUsers.filter(u => u.isBroadcaster).length,
+            admins: connectedUsers.filter(u => u.isAdmin).length,
+
+            // Lifetime stats
+            totalConnections: this.stats.totalConnections,
+            totalDisconnections: this.stats.totalDisconnections,
+            totalBroadcasts: this.stats.totalBroadcasts,
+            totalMessagesDelivered: this.stats.totalMessagesDelivered,
+
+            // Uptime
             uptime: process.uptime(),
-            connectedUsers: Array.from(this.clients.values())
-                .filter(c => c.authenticated)
-                .map(c => ({ username: c.username, isBroadcaster: c.isBroadcaster }))
+            serverStartedAt: this.stats.serverStartedAt,
+
+            // Connected users detail
+            connectedUsers
         };
 
         client.ws.send(JSON.stringify({
@@ -394,6 +496,7 @@ class WebSocketServer {
             clearTimeout(client.authTimer);
         }
 
+        this.stats.totalDisconnections++;
         logger.connectionClosed(clientId, client.username, 'Client disconnected');
         this.rateLimiter.reset(clientId);
         this.clients.delete(clientId);

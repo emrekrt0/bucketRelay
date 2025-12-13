@@ -9,9 +9,9 @@ async function seedDatabase() {
     try {
         await db.testConnection();
 
-        // ekoBaba31 = broadcaster (can send & receive)
-        await db.addBroadcaster('ekoBaba31');
-        console.log('✓ ekoBaba31 added (broadcaster)');
+        // ekoBaba31 = admin (can send, receive, and manage users)
+        await db.addAdmin('ekoBaba31');
+        console.log('✓ ekoBaba31 added (admin)');
 
         // jewloema31 = receiver only
         await db.addUser('jewloema31');
