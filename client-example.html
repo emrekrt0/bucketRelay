@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Broadcaster Client</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        h1 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        h2 {
+            color: #333;
+            margin-bottom: 16px;
+            font-size: 18px;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        .status.connected {
+            background: #10b981;
+            color: white;
+        }
+
+        .status.disconnected {
+            background: #ef4444;
+            color: white;
+        }
+
+        .status.pending {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .input-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 10px 14px;
+            border: 2px solid #e5e7eb;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        .log {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 16px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+
+        .log-item {
+            margin-bottom: 8px;
+            padding: 6px;
+            border-radius: 4px;
+        }
+
+        .log-item.info {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .log-item.success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .log-item.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .log-item.broadcast {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .broadcast-card {
+            background: #f9fafb;
+            border-left: 4px solid #667eea;
+            padding: 16px;
+            margin-bottom: 12px;
+            border-radius: 4px;
+        }
+
+        .broadcast-card h3 {
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .broadcast-card p {
+            color: #666;
+            font-size: 14px;
+            margin: 4px 0;
+        }
+
+        .broadcast-card img {
+            max-width: 100%;
+            margin-top: 8px;
+            border-radius: 4px;
+        }
+
+        .flex {
+            display: flex;
+            gap: 12px;
+        }
+
+        .role-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>🔌 WebSocket Broadcaster</h1>
+            <div id="statusBadge" class="status disconnected">Disconnected</div>
+            <div id="roleBadge" style="display: none;" class="role-badge">Broadcaster</div>
+        </div>
+
+        <div class="card">
+            <h2>Authentication</h2>
+            <div class="input-group">
+                <label for="wsUrl">WebSocket URL</label>
+                <input type="text" id="wsUrl" value="ws://localhost:8080" placeholder="ws://localhost:8080">
+            </div>
+            <div class="input-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" placeholder="Enter your username">
+            </div>
+            <div class="flex">
+                <button id="connectBtn" onclick="connect()">Connect</button>
+                <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+            </div>
+        </div>
+
+        <div class="card" id="broadcastSection" style="display: none;">
+            <h2>Send Broadcast</h2>
+            <div class="input-group">
+                <label for="title">Title</label>
+                <input type="text" id="title" placeholder="Broadcast title">
+            </div>
+            <div class="input-group">
+                <label for="url">URL</label>
+                <input type="url" id="url" placeholder="https://example.com">
+            </div>
+            <div class="input-group">
+                <label for="icon">Icon URL</label>
+                <input type="url" id="icon" placeholder="https://example.com/icon.png">
+            </div>
+            <div class="input-group">
+                <label for="source">Source</label>
+                <input type="text" id="source" placeholder="Source name">
+            </div>
+            <div class="input-group">
+                <label for="image">Image URL</label>
+                <input type="url" id="image" placeholder="https://example.com/image.jpg">
+            </div>
+            <button onclick="sendBroadcast()">Send Broadcast</button>
+        </div>
+
+        <div class="card">
+            <h2>Received Broadcasts</h2>
+            <div id="broadcasts" style="min-height: 100px;"></div>
+        </div>
+
+        <div class="card">
+            <h2>Connection Log</h2>
+            <div id="log" class="log"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let isBroadcaster = false;
+
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const item = document.createElement('div');
+            item.className = `log-item ${type}`;
+            item.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logEl.insertBefore(item, logEl.firstChild);
+        }
+
+        function updateStatus(status) {
+            const badge = document.getElementById('statusBadge');
+            badge.className = `status ${status}`;
+            badge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        }
+
+        function connect() {
+            const url = document.getElementById('wsUrl').value;
+            const username = document.getElementById('username').value.trim();
+
+            if (!username) {
+                alert('Please enter a username');
+                return;
+            }
+
+            try {
+                ws = new WebSocket(url);
+
+                ws.onopen = () => {
+                    log('Connected to server', 'success');
+                    updateStatus('pending');
+                    
+                    // Send login command
+                    setTimeout(() => {
+                        ws.send(`login ${username}`);
+                        log(`Sent login: ${username}`, 'info');
+                    }, 100);
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleMessage(data);
+                    } catch (e) {
+                        log(`Raw message: ${event.data}`, 'info');
+                    }
+                };
+
+                ws.onclose = () => {
+                    log('Disconnected from server', 'error');
+                    updateStatus('disconnected');
+                    document.getElementById('connectBtn').disabled = false;
+                    document.getElementById('disconnectBtn').disabled = true;
+                    document.getElementById('broadcastSection').style.display = 'none';
+                    document.getElementById('roleBadge').style.display = 'none';
+                };
+
+                ws.onerror = (error) => {
+                    log('WebSocket error occurred', 'error');
+                };
+
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('disconnectBtn').disabled = false;
+
+            } catch (error) {
+                log(`Connection failed: ${error.message}`, 'error');
+            }
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+            }
+        }
+
+        function handleMessage(data) {
+            switch (data.type) {
+                case 'info':
+                    log(data.message, 'info');
+                    break;
+
+                case 'auth_success':
+                    log(`Authenticated as ${data.username}`, 'success');
+                    updateStatus('connected');
+                    isBroadcaster = data.isBroadcaster;
+                    
+                    if (isBroadcaster) {
+                        document.getElementById('broadcastSection').style.display = 'block';
+                        document.getElementById('roleBadge').style.display = 'inline-block';
+                        log('You have broadcaster permissions', 'success');
+                    } else {
+                        log('You are in receive-only mode', 'info');
+                    }
+                    break;
+
+                case 'broadcast':
+                    displayBroadcast(data.data);
+                    log(`Received broadcast: ${data.data.title}`, 'broadcast');
+                    break;
+
+                case 'broadcast_sent':
+                    log(data.message, 'success');
+                    break;
+
+                case 'error':
+                    log(`Error: ${data.message}`, 'error');
+                    break;
+
+                case 'stats':
+                    log(`Stats: ${JSON.stringify(data.data)}`, 'info');
+                    break;
+
+                default:
+                    log(`Unknown message type: ${data.type}`, 'info');
+            }
+        }
+
+        function displayBroadcast(data) {
+            const container = document.getElementById('broadcasts');
+            const card = document.createElement('div');
+            card.className = 'broadcast-card';
+            card.innerHTML = `
+                <h3>${data.title}</h3>
+                <p><strong>Source:</strong> ${data.source}</p>
+                <p><strong>URL:</strong> <a href="${data.url}" target="_blank">${data.url}</a></p>
+                <p><strong>Icon:</strong> ${data.icon}</p>
+                ${data.image ? `<img src="${data.image}" alt="Broadcast image" onerror="this.style.display='none'">` : ''}
+            `;
+            container.insertBefore(card, container.firstChild);
+        }
+
+        function sendBroadcast() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('Not connected');
+                return;
+            }
+
+            if (!isBroadcaster) {
+                alert('You do not have broadcaster permissions');
+                return;
+            }
+
+            const broadcast = {
+                title: document.getElementById('title').value.trim(),
+                url: document.getElementById('url').value.trim(),
+                icon: document.getElementById('icon').value.trim(),
+                source: document.getElementById('source').value.trim(),
+                image: document.getElementById('image').value.trim()
+            };
+
+            // Validate all fields filled
+            for (const [key, value] of Object.entries(broadcast)) {
+                if (!value) {
+                    alert(`Please fill in ${key}`);
+                    return;
+                }
+            }
+
+            ws.send(JSON.stringify(broadcast));
+            log('Broadcasting message...', 'info');
+        }
+
+        function sendStats() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send('stats');
+            }
+        }
+    </script>
+</body>
+</html>
