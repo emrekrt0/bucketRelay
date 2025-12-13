@@ -12,8 +12,8 @@ const {
 const PORT = process.env.PORT || 8080;
 const AUTH_TIMEOUT_MS = 30000; // 30 seconds to authenticate
 const PING_INTERVAL_MS = 15000; // 15 seconds ping interval
-const MAX_MESSAGE_SIZE = 10000; // 10KB max message size
-const RATE_LIMIT_MESSAGES = 20; // messages per minute
+const MAX_MESSAGE_SIZE = 100000; // 100KB max message size (for messages with long URLs)
+const RATE_LIMIT_MESSAGES = 100; // messages per minute (broadcasters only can send)
 const RATE_LIMIT_WINDOW = 60000; // 1 minute
 
 class WebSocketServer {
