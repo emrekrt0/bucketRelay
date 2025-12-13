@@ -125,17 +125,15 @@ function sanitizeString(str) {
     return str.trim().substring(0, 1000); // Limit length
 }
 
-// Format broadcast message for transmission
+// Format broadcast message for transmission (flat structure)
 function formatBroadcast(data) {
     return {
         type: 'broadcast',
-        data: {
-            title: sanitizeString(data.title),
-            source: sanitizeString(data.source),
-            url: sanitizeString(data.url || ''),
-            icon: sanitizeString(data.icon || ''),
-            image: sanitizeString(data.image || '')
-        },
+        title: sanitizeString(data.title),
+        source: sanitizeString(data.source),
+        url: sanitizeString(data.url || ''),
+        icon: sanitizeString(data.icon || ''),
+        image: sanitizeString(data.image || ''),
         timestamp: Date.now()
     };
 }
