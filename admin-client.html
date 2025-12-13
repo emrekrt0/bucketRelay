@@ -384,8 +384,9 @@
                             <th>Role</th>
                             <th>Filters</th>
                             <th>IP</th>
-                            <th>Connected</th>
+                            <th>Conn</th>
                             <th>Msgs</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="usersTable"></tbody>
@@ -508,6 +509,9 @@
                     const role = u.isAdmin ? 'admin' : u.isBroadcaster ? 'broadcaster' : 'receiver';
                     const label = u.isAdmin ? 'Admin' : u.isBroadcaster ? 'Broadcaster' : 'Receiver';
                     const filters = (u.sourceFilters || ['*']).join(', ');
+                    const toggleBtn = u.isAdmin ? '' : (u.isBroadcaster
+                        ? `<button class="secondary" style="padding:4px 8px;font-size:10px;" onclick="toggleBroadcaster('${u.username}', false)">↓</button>`
+                        : `<button style="padding:4px 8px;font-size:10px;" onclick="toggleBroadcaster('${u.username}', true)">↑</button>`);
                     tbody.innerHTML += `
                         <tr>
                             <td><strong>${u.username}</strong></td>
@@ -516,6 +520,11 @@
                             <td style="opacity: 0.7; font-size: 11px;">${u.ip || 'N/A'}</td>
                             <td>${formatDuration(u.connectedFor)}</td>
                             <td>${u.messagesReceived}</td>
+                            <td>
+                                ${toggleBtn}
+                                <button class="secondary" style="padding:4px 8px;font-size:10px;" onclick="kickUser('${u.username}')">Kick</button>
+                                <button class="danger" style="padding:4px 8px;font-size:10px;" onclick="banUser('${u.username}')">Ban</button>
+                            </td>
                         </tr>
                     `;
                 });
@@ -566,6 +575,23 @@
             if (!username) { alert('Enter username'); return; }
             ws.send(`admin remove_broadcaster ${adminPassword} ${username}`);
             document.getElementById('removeUserName').value = '';
+        }
+
+        function kickUser(username) {
+            if (confirm(`Kick ${username}?`)) {
+                ws.send(`admin kick ${adminPassword} ${username}`);
+            }
+        }
+
+        function banUser(username) {
+            if (confirm(`Ban ${username}? This will remove them from whitelist and disconnect.`)) {
+                ws.send(`admin ban ${adminPassword} ${username}`);
+            }
+        }
+
+        function toggleBroadcaster(username, makeBroadcaster) {
+            const cmd = makeBroadcaster ? 'add_broadcaster' : 'remove_broadcaster';
+            ws.send(`admin ${cmd} ${adminPassword} ${username}`);
         }
 
         setInterval(getStats, 5000);

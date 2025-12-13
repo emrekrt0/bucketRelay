@@ -412,6 +412,8 @@ class WebSocketServer {
 
                 case 'add_broadcaster':
                     await this.db.addBroadcaster(target);
+                    // Update connected user's status if they're online
+                    this.updateConnectedUserStatus(target, { isBroadcaster: true });
                     client.ws.send(JSON.stringify({
                         type: 'admin_response',
                         message: `${target} granted broadcaster permissions`
@@ -420,16 +422,37 @@ class WebSocketServer {
 
                 case 'remove_broadcaster':
                     await this.db.removeBroadcaster(target);
+                    // Update connected user's status if they're online
+                    this.updateConnectedUserStatus(target, { isBroadcaster: false });
                     client.ws.send(JSON.stringify({
                         type: 'admin_response',
                         message: `${target} removed from broadcasters`
                     }));
                     break;
 
+                case 'kick':
+                    // Disconnect user without removing from whitelist
+                    const kicked = this.kickUser(target);
+                    client.ws.send(JSON.stringify({
+                        type: 'admin_response',
+                        message: kicked ? `${target} has been kicked` : `${target} is not connected`
+                    }));
+                    break;
+
+                case 'ban':
+                    // Remove from whitelist AND disconnect
+                    await this.db.removeUser(target);
+                    this.kickUser(target);
+                    client.ws.send(JSON.stringify({
+                        type: 'admin_response',
+                        message: `${target} has been banned and disconnected`
+                    }));
+                    break;
+
                 default:
                     client.ws.send(JSON.stringify({
                         type: 'error',
-                        message: 'Unknown admin command'
+                        message: 'Unknown command. Available: add_user, remove_user, add_broadcaster, remove_broadcaster, kick, ban'
                     }));
             }
         } catch (error) {
@@ -437,6 +460,32 @@ class WebSocketServer {
                 type: 'error',
                 message: `Admin command failed: ${error.message}`
             }));
+        }
+    }
+
+    // Kick a user by username
+    kickUser(username) {
+        for (const [id, c] of this.clients.entries()) {
+            if (c.username === username) {
+                c.ws.send(JSON.stringify({ type: 'error', message: 'You have been kicked by an admin' }));
+                c.ws.close(1008, 'Kicked by admin');
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Update a connected user's status (used when upgrading/downgrading)
+    updateConnectedUserStatus(username, updates) {
+        for (const [id, c] of this.clients.entries()) {
+            if (c.username === username) {
+                Object.assign(c, updates);
+                c.ws.send(JSON.stringify({
+                    type: 'status_update',
+                    ...updates,
+                    message: 'Your permissions have been updated'
+                }));
+            }
         }
     }
 
