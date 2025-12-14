@@ -602,7 +602,7 @@ class WebSocketServer {
         }
     }
 
-    sendStats(clientId) {
+    async sendStats(clientId) {
         const client = this.clients.get(clientId);
         if (!client) return;
 
@@ -652,6 +652,9 @@ class WebSocketServer {
 
             // Recent broadcasts for activity feed (last 20)
             recentBroadcasts: this.recentBroadcasts,
+
+            // Recent connection events (from database)
+            recentEvents: await this.db.getRecentEvents(20),
 
             // Connection limit info
             maxConnectionsPerUser: MAX_CONNECTIONS_PER_USER

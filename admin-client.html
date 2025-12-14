@@ -416,9 +416,12 @@
         }
 
         @media (max-width: 768px) {
-            .grid, .grid-5 {
+
+            .grid,
+            .grid-5 {
                 grid-template-columns: repeat(2, 1fr);
             }
+
             .grid-3 {
                 grid-template-columns: 1fr;
             }
@@ -545,7 +548,8 @@
             <div class="card">
                 <h2>👥 User Management</h2>
                 <p style="margin-bottom: 12px; opacity: 0.6; font-size: 12px;">
-                    All commands require admin password for security. Max <span id="maxConnsPerUser">5</span> connections per user.
+                    All commands require admin password for security. Max <span id="maxConnsPerUser">5</span>
+                    connections per user.
                 </p>
                 <div class="row">
                     <input type="text" id="newUser" placeholder="Username">
@@ -564,7 +568,8 @@
 
             <!-- Connected Users Table -->
             <div class="card">
-                <div class="section-title">📋 Connected Users <span style="opacity: 0.5; font-size: 10px;">(Click row for details)</span></div>
+                <div class="section-title">📋 Connected Users <span style="opacity: 0.5; font-size: 10px;">(Click row
+                        for details)</span></div>
                 <table>
                     <thead>
                         <tr>
@@ -597,7 +602,7 @@
                 <h2>👤 User Details: <span id="modalUsername"></span></h2>
                 <button class="modal-close" onclick="closeModal()">&times;</button>
             </div>
-            
+
             <div class="grid">
                 <div class="stat-box">
                     <div class="stat-number" id="modalActiveConns">0</div>
@@ -619,7 +624,7 @@
 
             <div style="margin-top: 16px;">
                 <p style="font-size: 12px; opacity: 0.7;">
-                    First seen: <span id="modalFirstSeen">-</span> | 
+                    First seen: <span id="modalFirstSeen">-</span> |
                     Last seen: <span id="modalLastSeen">-</span> |
                     Times kicked: <span id="modalTimesKicked">0</span>
                 </p>
@@ -752,17 +757,17 @@
             document.getElementById('broadcasters').textContent = stats.broadcasters;
             document.getElementById('admins').textContent = stats.admins || 0;
             document.getElementById('peakConnections').textContent = stats.peakConnections || 0;
-            
+
             // Update lifetime stats
             document.getElementById('totalConnections').textContent = stats.totalConnections;
             document.getElementById('totalDisconnections').textContent = stats.totalDisconnections;
             document.getElementById('totalBroadcasts').textContent = stats.totalBroadcasts;
             document.getElementById('totalMessagesDelivered').textContent = stats.totalMessagesDelivered;
             document.getElementById('totalAuthFailures').textContent = stats.totalAuthFailures || 0;
-            
+
             // Update uptime
             document.getElementById('serverUptime').textContent = `Uptime: ${formatDuration(Math.floor(stats.uptime))}`;
-            
+
             // Update max connections per user
             if (stats.maxConnectionsPerUser) {
                 maxConnsPerUser = stats.maxConnectionsPerUser;
@@ -771,16 +776,16 @@
 
             // Update users table
             updateUsersTable(stats);
-            
-            // Update activity feed with recent broadcasts
-            updateActivityFeed(stats.recentBroadcasts || []);
+
+            // Update activity feed with broadcasts and connection events
+            updateActivityFeed(stats.recentBroadcasts || [], stats.recentEvents || []);
         }
 
         function updateUsersTable(stats) {
             const tbody = document.getElementById('usersTable');
             const noUsersMsg = document.getElementById('noUsersMsg');
             tbody.innerHTML = '';
-            
+
             const activeConnsByUser = stats.activeConnectionsByUser || {};
 
             if (stats.connectedUsers.length === 0) {
@@ -792,16 +797,16 @@
                     const label = u.isAdmin ? 'Admin' : u.isBroadcaster ? 'Broadcaster' : 'Receiver';
                     const filters = (u.sourceFilters || ['*']).join(', ');
                     const conns = activeConnsByUser[u.username] || 1;
-                    
+
                     // Connection limit indicator
                     let connLimitClass = 'ok';
                     if (conns >= maxConnsPerUser) connLimitClass = 'danger';
                     else if (conns >= maxConnsPerUser - 1) connLimitClass = 'warning';
-                    
+
                     const toggleBtn = u.isAdmin ? '' : (u.isBroadcaster
                         ? `<button class="secondary" style="padding:4px 8px;font-size:10px;" onclick="event.stopPropagation(); toggleBroadcaster('${u.username}', false)">↓</button>`
                         : `<button style="padding:4px 8px;font-size:10px;" onclick="event.stopPropagation(); toggleBroadcaster('${u.username}', true)">↑</button>`);
-                    
+
                     const tr = document.createElement('tr');
                     tr.className = 'clickable';
                     tr.onclick = () => getUserDetail(u.username);
@@ -824,23 +829,74 @@
             }
         }
 
-        function updateActivityFeed(broadcasts) {
+        function updateActivityFeed(broadcasts, connectionEvents) {
             const feed = document.getElementById('activityFeed');
-            
-            if (broadcasts.length === 0) {
-                feed.innerHTML = '<p style="opacity: 0.5; text-align: center; padding: 20px;">No recent broadcasts</p>';
+
+            // Merge broadcasts and connection events into a single timeline
+            const allEvents = [];
+
+            // Add broadcasts
+            (broadcasts || []).forEach(b => {
+                allEvents.push({
+                    type: 'broadcast',
+                    timestamp: new Date(b.timestamp),
+                    data: b
+                });
+            });
+
+            // Add connection events
+            (connectionEvents || []).forEach(e => {
+                allEvents.push({
+                    type: e.event_type,
+                    timestamp: new Date(e.created_at),
+                    data: e
+                });
+            });
+
+            // Sort by timestamp (most recent first)
+            allEvents.sort((a, b) => b.timestamp - a.timestamp);
+
+            // Limit to 30 items
+            const limitedEvents = allEvents.slice(0, 30);
+
+            if (limitedEvents.length === 0) {
+                feed.innerHTML = '<p style="opacity: 0.5; text-align: center; padding: 20px;">No recent activity</p>';
                 return;
             }
-            
-            feed.innerHTML = broadcasts.map(b => {
-                const time = new Date(b.timestamp).toLocaleTimeString();
-                return `
-                    <div class="activity-item broadcast">
-                        <span class="time">${time}</span>
-                        <span class="icon">📡</span>
-                        <span><strong>${b.source}</strong>: ${b.title.substring(0, 50)}${b.title.length > 50 ? '...' : ''} → ${b.recipients} users</span>
-                    </div>
-                `;
+
+            const eventIcons = {
+                'broadcast': '📡',
+                'connect': '🟢',
+                'disconnect': '🔴',
+                'auth_fail': '⚠️',
+                'kicked': '👢',
+                'banned': '🚫'
+            };
+
+            feed.innerHTML = limitedEvents.map(e => {
+                const time = e.timestamp.toLocaleTimeString();
+                const icon = eventIcons[e.type] || '📌';
+
+                if (e.type === 'broadcast') {
+                    const b = e.data;
+                    return `
+                        <div class="activity-item broadcast">
+                            <span class="time">${time}</span>
+                            <span class="icon">${icon}</span>
+                            <span><strong>${b.source}</strong>: ${b.title.substring(0, 40)}${b.title.length > 40 ? '...' : ''} → ${b.recipients} users</span>
+                        </div>
+                    `;
+                } else {
+                    const ev = e.data;
+                    const reason = ev.disconnect_reason ? ` (${ev.disconnect_reason})` : '';
+                    return `
+                        <div class="activity-item ${e.type}">
+                            <span class="time">${time}</span>
+                            <span class="icon">${icon}</span>
+                            <span><strong>${ev.username}</strong> ${e.type}${reason}</span>
+                        </div>
+                    `;
+                }
             }).join('');
         }
 
@@ -853,7 +909,7 @@
         function showUserDetailModal(data) {
             document.getElementById('modalUsername').textContent = data.username;
             document.getElementById('modalActiveConns').textContent = data.activeConnections || 0;
-            
+
             const summary = data.summary || {};
             document.getElementById('modalTotalConns').textContent = summary.total_connections || 0;
             document.getElementById('modalTotalDisconns').textContent = summary.total_disconnections || 0;
@@ -861,11 +917,11 @@
             document.getElementById('modalTimesKicked').textContent = summary.times_kicked || 0;
             document.getElementById('modalFirstSeen').textContent = formatTime(summary.first_seen);
             document.getElementById('modalLastSeen').textContent = formatTime(summary.last_seen);
-            
+
             // Populate history table
             const historyTable = document.getElementById('modalHistoryTable');
             const history = data.history || [];
-            
+
             if (history.length === 0) {
                 historyTable.innerHTML = '<tr><td colspan="4" style="text-align: center; opacity: 0.5;">No history available</td></tr>';
             } else {
@@ -888,7 +944,7 @@
                     `;
                 }).join('');
             }
-            
+
             document.getElementById('userDetailModal').classList.add('active');
         }
 
