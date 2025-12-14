@@ -29,6 +29,14 @@ async function runMigrations() {
         `);
         console.log('✓ is_admin column ensured');
 
+        // Apply schema_v2 - connection_events table
+        const schema2Path = path.join(__dirname, 'schema_v2.sql');
+        if (fs.existsSync(schema2Path)) {
+            const schema2 = fs.readFileSync(schema2Path, 'utf8');
+            await db.query(schema2);
+            console.log('✓ connection_events table ensured');
+        }
+
         const users = await db.getAllUsers();
         console.log(`Current users: ${users.length}`);
 

@@ -15,6 +15,8 @@ const PING_INTERVAL_MS = 15000; // 15 seconds ping interval
 const MAX_MESSAGE_SIZE = 100000; // 100KB max message size (for messages with long URLs)
 const RATE_LIMIT_MESSAGES = 100; // messages per minute (broadcasters only can send)
 const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const MAX_CONNECTIONS_PER_USER = 5; // Max concurrent connections per whitelisted username
+const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // Daily cleanup check (weekly retention)
 
 class WebSocketServer {
     constructor() {
@@ -31,8 +33,13 @@ class WebSocketServer {
             totalDisconnections: 0,
             totalBroadcasts: 0,
             totalMessagesDelivered: 0,
+            totalAuthFailures: 0,
+            peakConnections: 0,
             serverStartedAt: Date.now()
         };
+
+        // Recent broadcasts for activity feed (last 20)
+        this.recentBroadcasts = [];
     }
 
     async start() {
@@ -53,6 +60,11 @@ class WebSocketServer {
 
         // Cleanup rate limiter periodically
         setInterval(() => this.rateLimiter.cleanup(), 60000);
+
+        // Weekly cleanup of old connection events (runs daily, deletes >7 days)
+        setInterval(() => this.db.cleanupOldEvents(), CLEANUP_INTERVAL_MS);
+        // Run initial cleanup on start
+        this.db.cleanupOldEvents();
 
         // Graceful shutdown
         process.on('SIGTERM', () => this.shutdown());
@@ -244,11 +256,27 @@ class WebSocketServer {
         const isWhitelisted = await this.db.isUserWhitelisted(validUsername);
         if (!isWhitelisted) {
             logger.authAttempt(clientId, validUsername, false);
+            this.stats.totalAuthFailures++;
+            this.db.logConnectionEvent(validUsername, client.ip, 'auth_fail', 'Not whitelisted');
             client.ws.send(JSON.stringify({
                 type: 'error',
                 message: 'Access denied. Username not whitelisted.'
             }));
             client.ws.close(1008, 'Not whitelisted');
+            return;
+        }
+
+        // Check concurrent connection limit (max 5 per username)
+        const currentConnections = this.countConnectionsForUsername(validUsername);
+        if (currentConnections >= MAX_CONNECTIONS_PER_USER) {
+            logger.authAttempt(clientId, validUsername, false);
+            this.stats.totalAuthFailures++;
+            this.db.logConnectionEvent(validUsername, client.ip, 'auth_fail', 'Max connections exceeded');
+            client.ws.send(JSON.stringify({
+                type: 'error',
+                message: `Maximum concurrent connections (${MAX_CONNECTIONS_PER_USER}) reached for this username.`
+            }));
+            client.ws.close(1008, 'Max connections exceeded');
             return;
         }
 
@@ -266,6 +294,15 @@ class WebSocketServer {
         client.isAdmin = isAdmin;
         client.sourceFilters = sourceFilters;
 
+        // Update peak connections
+        const authCount = this.countAuthenticatedUsers();
+        if (authCount > this.stats.peakConnections) {
+            this.stats.peakConnections = authCount;
+        }
+
+        // Log connection event
+        this.db.logConnectionEvent(validUsername, client.ip, 'connect', null);
+
         logger.authAttempt(clientId, validUsername, true);
         logger.info('Source filters set', { username: validUsername, filters: sourceFilters });
 
@@ -277,6 +314,28 @@ class WebSocketServer {
             sourceFilters,
             message: `Welcome, ${validUsername}! Filters: ${sourceFilters.length === 0 ? 'none' : sourceFilters.join(', ')}`
         }));
+    }
+
+    // Count active authenticated connections for a specific username
+    countConnectionsForUsername(username) {
+        let count = 0;
+        for (const [id, c] of this.clients.entries()) {
+            if (c.authenticated && c.username === username) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    // Count all authenticated users
+    countAuthenticatedUsers() {
+        let count = 0;
+        for (const [id, c] of this.clients.entries()) {
+            if (c.authenticated) {
+                count++;
+            }
+        }
+        return count;
     }
 
     async handleBroadcast(clientId, rawMessage, jsonData = null) {
@@ -345,6 +404,20 @@ class WebSocketServer {
 
         this.stats.totalBroadcasts++;
         this.stats.totalMessagesDelivered += recipients;
+
+        // Track recent broadcasts for activity feed
+        this.recentBroadcasts.unshift({
+            id: Date.now(),
+            title: broadcastData.title,
+            source: broadcastData.source,
+            sender: client.username,
+            recipients,
+            timestamp: new Date().toISOString()
+        });
+        // Keep only last 20 broadcasts
+        if (this.recentBroadcasts.length > 20) {
+            this.recentBroadcasts.pop();
+        }
 
         logger.broadcastSent(client.username, recipients);
 
@@ -440,19 +513,45 @@ class WebSocketServer {
                     break;
 
                 case 'ban':
-                    // Remove from whitelist AND disconnect
-                    await this.db.removeUser(target);
-                    this.kickUser(target);
+                    // Remove from whitelist AND disconnect with event logging
+                    await this.banUser(target);
                     client.ws.send(JSON.stringify({
                         type: 'admin_response',
                         message: `${target} has been banned and disconnected`
                     }));
                     break;
 
+                case 'user_detail':
+                    // Get detailed user info including connection history
+                    const history = await this.db.getConnectionHistory(target, 50);
+                    const summary = await this.db.getUserConnectionSummary(target);
+                    const activeConns = this.countConnectionsForUsername(target);
+                    client.ws.send(JSON.stringify({
+                        type: 'user_detail',
+                        username: target,
+                        activeConnections: activeConns,
+                        summary: summary,
+                        history: history
+                    }));
+                    break;
+
+                case 'connection_stats':
+                    // Get aggregated connection stats for graphs
+                    const hoursBack = parseInt(target) || 24;
+                    const connStats = await this.db.getConnectionStats(hoursBack);
+                    const recentEvents = await this.db.getRecentEvents(30);
+                    client.ws.send(JSON.stringify({
+                        type: 'connection_stats',
+                        hoursBack,
+                        stats: connStats,
+                        recentEvents: recentEvents
+                    }));
+                    break;
+
                 default:
                     client.ws.send(JSON.stringify({
                         type: 'error',
-                        message: 'Unknown command. Available: add_user, remove_user, add_broadcaster, remove_broadcaster, kick, ban'
+                        message: 'Unknown command. Available: add_user, remove_user, add_broadcaster, remove_broadcaster, kick, ban, user_detail, connection_stats'
                     }));
             }
         } catch (error) {
@@ -463,16 +562,30 @@ class WebSocketServer {
         }
     }
 
-    // Kick a user by username
-    kickUser(username) {
+    // Kick a user by username (with optional event logging)
+    kickUser(username, reason = 'Kicked by admin') {
         for (const [id, c] of this.clients.entries()) {
             if (c.username === username) {
+                // Log the kick event
+                this.db.logConnectionEvent(username, c.ip, 'kicked', reason);
                 c.ws.send(JSON.stringify({ type: 'error', message: 'You have been kicked by an admin' }));
                 c.ws.close(1008, 'Kicked by admin');
                 return true;
             }
         }
         return false;
+    }
+
+    // Ban a user (kick and log ban event)
+    async banUser(username) {
+        // Log ban event for all connections of this user
+        for (const [id, c] of this.clients.entries()) {
+            if (c.username === username) {
+                this.db.logConnectionEvent(username, c.ip, 'banned', 'Banned by admin');
+            }
+        }
+        await this.db.removeUser(username);
+        this.kickUser(username, 'Banned by admin');
     }
 
     // Update a connected user's status (used when upgrading/downgrading)
@@ -506,6 +619,12 @@ class WebSocketServer {
                 messagesReceived: c.messagesReceived
             }));
 
+        // Calculate active connections per user
+        const activeConnectionsByUser = {};
+        for (const u of connectedUsers) {
+            activeConnectionsByUser[u.username] = (activeConnectionsByUser[u.username] || 0) + 1;
+        }
+
         const stats = {
             // Current connections
             currentConnections: this.clients.size,
@@ -518,13 +637,24 @@ class WebSocketServer {
             totalDisconnections: this.stats.totalDisconnections,
             totalBroadcasts: this.stats.totalBroadcasts,
             totalMessagesDelivered: this.stats.totalMessagesDelivered,
+            totalAuthFailures: this.stats.totalAuthFailures,
+            peakConnections: this.stats.peakConnections,
 
             // Uptime
             uptime: process.uptime(),
             serverStartedAt: this.stats.serverStartedAt,
 
             // Connected users detail
-            connectedUsers
+            connectedUsers,
+
+            // Active connections breakdown by user
+            activeConnectionsByUser,
+
+            // Recent broadcasts for activity feed (last 20)
+            recentBroadcasts: this.recentBroadcasts,
+
+            // Connection limit info
+            maxConnectionsPerUser: MAX_CONNECTIONS_PER_USER
         };
 
         client.ws.send(JSON.stringify({
@@ -551,6 +681,11 @@ class WebSocketServer {
 
         if (client.authTimer) {
             clearTimeout(client.authTimer);
+        }
+
+        // Log disconnect event if user was authenticated
+        if (client.authenticated && client.username) {
+            this.db.logConnectionEvent(client.username, client.ip, 'disconnect', 'Client disconnected');
         }
 
         this.stats.totalDisconnections++;

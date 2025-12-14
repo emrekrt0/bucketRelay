@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Panel - WebSocket</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * {
             margin: 0;
@@ -21,7 +22,7 @@
         }
 
         .container {
-            max-width: 1000px;
+            max-width: 1400px;
             margin: 0 auto;
         }
 
@@ -121,10 +122,22 @@
             gap: 12px;
         }
 
+        .grid-5 {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+        }
+
         .grid-2 {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 10px;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
         }
 
         .stat-box {
@@ -146,6 +159,10 @@
             background: rgba(155, 89, 182, 0.2);
         }
 
+        .stat-box.red {
+            background: rgba(231, 76, 60, 0.2);
+        }
+
         .stat-number {
             font-size: 28px;
             font-weight: 700;
@@ -162,6 +179,10 @@
 
         .stat-box.purple .stat-number {
             color: #9b59b6;
+        }
+
+        .stat-box.red .stat-number {
+            color: #e74c3c;
         }
 
         .stat-label {
@@ -194,6 +215,10 @@
             background: rgba(231, 76, 60, 0.3);
         }
 
+        .log-item.broadcast {
+            background: rgba(52, 152, 219, 0.3);
+        }
+
         .row {
             display: flex;
             gap: 10px;
@@ -224,6 +249,11 @@
             text-transform: uppercase;
         }
 
+        tr.clickable:hover {
+            background: rgba(255, 255, 255, 0.05);
+            cursor: pointer;
+        }
+
         .badge {
             display: inline-block;
             padding: 3px 8px;
@@ -244,6 +274,11 @@
             background: #27ae60;
         }
 
+        .badge.warning {
+            background: #e67e22;
+            color: #fff;
+        }
+
         .section-title {
             font-size: 12px;
             text-transform: uppercase;
@@ -257,6 +292,136 @@
             margin-bottom: 4px;
             font-size: 12px;
             opacity: 0.7;
+        }
+
+        /* Modal styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border-radius: 16px;
+            padding: 24px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            margin: 0;
+        }
+
+        /* Activity feed */
+        .activity-feed {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .activity-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            margin-bottom: 6px;
+            border-radius: 6px;
+            background: rgba(0, 0, 0, 0.2);
+            font-size: 12px;
+        }
+
+        .activity-item .time {
+            color: rgba(255, 255, 255, 0.5);
+            margin-right: 12px;
+            min-width: 70px;
+        }
+
+        .activity-item .icon {
+            margin-right: 10px;
+            font-size: 14px;
+        }
+
+        .activity-item.connect {
+            border-left: 3px solid #27ae60;
+        }
+
+        .activity-item.disconnect {
+            border-left: 3px solid #e74c3c;
+        }
+
+        .activity-item.broadcast {
+            border-left: 3px solid #3498db;
+        }
+
+        .activity-item.auth_fail {
+            border-left: 3px solid #e67e22;
+        }
+
+        .activity-item.kicked {
+            border-left: 3px solid #9b59b6;
+        }
+
+        /* Chart container */
+        .chart-container {
+            position: relative;
+            height: 200px;
+            margin-top: 12px;
+        }
+
+        /* Connection limit indicator */
+        .conn-limit {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            margin-left: 4px;
+        }
+
+        .conn-limit.warning {
+            background: #e67e22;
+        }
+
+        .conn-limit.danger {
+            background: #e74c3c;
+        }
+
+        .conn-limit.ok {
+            background: #27ae60;
+        }
+
+        @media (max-width: 768px) {
+            .grid, .grid-5 {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .grid-3 {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -283,9 +448,10 @@
         </div>
 
         <div id="dashboardSection" style="display: none;">
+            <!-- Current Connections -->
             <div class="card">
                 <div class="section-title">📊 Current Connections</div>
-                <div class="grid">
+                <div class="grid-5">
                     <div class="stat-box">
                         <div class="stat-number" id="currentConnections">0</div>
                         <div class="stat-label">Total Connected</div>
@@ -302,12 +468,17 @@
                         <div class="stat-number" id="admins">0</div>
                         <div class="stat-label">Admins</div>
                     </div>
+                    <div class="stat-box">
+                        <div class="stat-number" id="peakConnections">0</div>
+                        <div class="stat-label">Peak (Session)</div>
+                    </div>
                 </div>
             </div>
 
+            <!-- Lifetime Statistics -->
             <div class="card">
                 <div class="section-title">📈 Lifetime Statistics</div>
-                <div class="grid">
+                <div class="grid-5">
                     <div class="stat-box">
                         <div class="stat-number" id="totalConnections">0</div>
                         <div class="stat-label">Total Connections</div>
@@ -324,41 +495,57 @@
                         <div class="stat-number" id="totalMessagesDelivered">0</div>
                         <div class="stat-label">Messages Delivered</div>
                     </div>
+                    <div class="stat-box red">
+                        <div class="stat-number" id="totalAuthFailures">0</div>
+                        <div class="stat-label">Auth Failures</div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Test Broadcast Sender -->
-            <div class="card">
-                <h2>📡 Send Test Broadcast</h2>
-                <div class="grid-2">
-                    <div>
-                        <label>Title *</label>
-                        <input type="text" id="bcTitle" placeholder="Breaking: Something happened">
-                    </div>
-                    <div>
-                        <label>Source *</label>
-                        <input type="text" id="bcSource" placeholder="binance, coinbase, etc.">
+            <!-- Activity Feed & Broadcast Sender -->
+            <div class="grid-2">
+                <!-- Live Activity Feed -->
+                <div class="card">
+                    <div class="section-title">🔴 Live Activity Feed</div>
+                    <div id="activityFeed" class="activity-feed">
+                        <p style="opacity: 0.5; text-align: center; padding: 20px;">No recent activity</p>
                     </div>
                 </div>
-                <label>URL (optional)</label>
-                <input type="text" id="bcUrl" placeholder="https://example.com/article">
-                <div class="grid-2">
-                    <div>
-                        <label>Icon URL (optional)</label>
-                        <input type="text" id="bcIcon" placeholder="https://example.com/icon.png">
+
+                <!-- Test Broadcast Sender -->
+                <div class="card">
+                    <h2>📡 Send Test Broadcast</h2>
+                    <div class="grid-2">
+                        <div>
+                            <label>Title *</label>
+                            <input type="text" id="bcTitle" placeholder="Breaking: Something happened">
+                        </div>
+                        <div>
+                            <label>Source *</label>
+                            <input type="text" id="bcSource" placeholder="binance, coinbase, etc.">
+                        </div>
                     </div>
-                    <div>
-                        <label>Image URL (optional)</label>
-                        <input type="text" id="bcImage" placeholder="https://example.com/image.jpg">
+                    <label>URL (optional)</label>
+                    <input type="text" id="bcUrl" placeholder="https://example.com/article">
+                    <div class="grid-2">
+                        <div>
+                            <label>Icon URL (optional)</label>
+                            <input type="text" id="bcIcon" placeholder="https://example.com/icon.png">
+                        </div>
+                        <div>
+                            <label>Image URL (optional)</label>
+                            <input type="text" id="bcImage" placeholder="https://example.com/image.jpg">
+                        </div>
                     </div>
+                    <button class="send" onclick="sendBroadcast()">📤 Send Broadcast</button>
                 </div>
-                <button class="send" onclick="sendBroadcast()">📤 Send Broadcast</button>
             </div>
 
+            <!-- User Management -->
             <div class="card">
                 <h2>👥 User Management</h2>
                 <p style="margin-bottom: 12px; opacity: 0.6; font-size: 12px;">
-                    All commands require admin password for security.
+                    All commands require admin password for security. Max <span id="maxConnsPerUser">5</span> connections per user.
                 </p>
                 <div class="row">
                     <input type="text" id="newUser" placeholder="Username">
@@ -375,8 +562,9 @@
                 </div>
             </div>
 
+            <!-- Connected Users Table -->
             <div class="card">
-                <div class="section-title">📋 Connected Users</div>
+                <div class="section-title">📋 Connected Users <span style="opacity: 0.5; font-size: 10px;">(Click row for details)</span></div>
                 <table>
                     <thead>
                         <tr>
@@ -384,7 +572,8 @@
                             <th>Role</th>
                             <th>Filters</th>
                             <th>IP</th>
-                            <th>Conn</th>
+                            <th>Conns</th>
+                            <th>Time</th>
                             <th>Msgs</th>
                             <th>Actions</th>
                         </tr>
@@ -396,14 +585,70 @@
         </div>
 
         <div class="card">
-            <h2>📝 Activity Log</h2>
+            <h2>📝 System Log</h2>
             <div id="log" class="log"></div>
+        </div>
+    </div>
+
+    <!-- User Detail Modal -->
+    <div id="userDetailModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>👤 User Details: <span id="modalUsername"></span></h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            
+            <div class="grid">
+                <div class="stat-box">
+                    <div class="stat-number" id="modalActiveConns">0</div>
+                    <div class="stat-label">Active Connections</div>
+                </div>
+                <div class="stat-box blue">
+                    <div class="stat-number" id="modalTotalConns">0</div>
+                    <div class="stat-label">Total Connections</div>
+                </div>
+                <div class="stat-box green">
+                    <div class="stat-number" id="modalTotalDisconns">0</div>
+                    <div class="stat-label">Disconnections</div>
+                </div>
+                <div class="stat-box red">
+                    <div class="stat-number" id="modalAuthFails">0</div>
+                    <div class="stat-label">Auth Failures</div>
+                </div>
+            </div>
+
+            <div style="margin-top: 16px;">
+                <p style="font-size: 12px; opacity: 0.7;">
+                    First seen: <span id="modalFirstSeen">-</span> | 
+                    Last seen: <span id="modalLastSeen">-</span> |
+                    Times kicked: <span id="modalTimesKicked">0</span>
+                </p>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <div class="section-title">Connection History (Last 50)</div>
+                <div style="max-height: 300px; overflow-y: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Event</th>
+                                <th>IP</th>
+                                <th>Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody id="modalHistoryTable"></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
         let ws = null;
         let adminPassword = '';
+        let currentStats = null;
+        let maxConnsPerUser = 5;
 
         function log(msg, type = 'info') {
             const el = document.getElementById('log');
@@ -425,6 +670,12 @@
             if (seconds < 60) return `${seconds}s`;
             if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
             return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+        }
+
+        function formatTime(isoString) {
+            if (!isoString) return '-';
+            const date = new Date(isoString);
+            return date.toLocaleString();
         }
 
         function connect() {
@@ -466,6 +717,7 @@
                     getStats();
                     break;
                 case 'stats':
+                    currentStats = data.data;
                     updateStats(data.data);
                     break;
                 case 'admin_response':
@@ -475,11 +727,18 @@
                 case 'broadcast_sent':
                     log(`✓ Broadcast sent to ${data.recipients} clients`, 'success');
                     break;
+                case 'user_detail':
+                    showUserDetailModal(data);
+                    break;
+                case 'connection_stats':
+                    // Handle connection stats for graphs
+                    log(`Received connection stats for ${data.hoursBack}h`);
+                    break;
                 case 'error':
                     log(`✗ ${data.message}`, 'error');
                     break;
                 case 'broadcast':
-                    log(`📡 Received: ${data.data.title}`);
+                    log(`📡 Received: ${data.data.title}`, 'broadcast');
                     break;
                 default:
                     log(JSON.stringify(data));
@@ -487,19 +746,42 @@
         }
 
         function updateStats(stats) {
+            // Update current connections
             document.getElementById('currentConnections').textContent = stats.currentConnections;
             document.getElementById('authenticatedUsers').textContent = stats.authenticatedUsers;
             document.getElementById('broadcasters').textContent = stats.broadcasters;
             document.getElementById('admins').textContent = stats.admins || 0;
+            document.getElementById('peakConnections').textContent = stats.peakConnections || 0;
+            
+            // Update lifetime stats
             document.getElementById('totalConnections').textContent = stats.totalConnections;
             document.getElementById('totalDisconnections').textContent = stats.totalDisconnections;
             document.getElementById('totalBroadcasts').textContent = stats.totalBroadcasts;
             document.getElementById('totalMessagesDelivered').textContent = stats.totalMessagesDelivered;
+            document.getElementById('totalAuthFailures').textContent = stats.totalAuthFailures || 0;
+            
+            // Update uptime
             document.getElementById('serverUptime').textContent = `Uptime: ${formatDuration(Math.floor(stats.uptime))}`;
+            
+            // Update max connections per user
+            if (stats.maxConnectionsPerUser) {
+                maxConnsPerUser = stats.maxConnectionsPerUser;
+                document.getElementById('maxConnsPerUser').textContent = maxConnsPerUser;
+            }
 
+            // Update users table
+            updateUsersTable(stats);
+            
+            // Update activity feed with recent broadcasts
+            updateActivityFeed(stats.recentBroadcasts || []);
+        }
+
+        function updateUsersTable(stats) {
             const tbody = document.getElementById('usersTable');
             const noUsersMsg = document.getElementById('noUsersMsg');
             tbody.innerHTML = '';
+            
+            const activeConnsByUser = stats.activeConnectionsByUser || {};
 
             if (stats.connectedUsers.length === 0) {
                 noUsersMsg.style.display = 'block';
@@ -509,26 +791,109 @@
                     const role = u.isAdmin ? 'admin' : u.isBroadcaster ? 'broadcaster' : 'receiver';
                     const label = u.isAdmin ? 'Admin' : u.isBroadcaster ? 'Broadcaster' : 'Receiver';
                     const filters = (u.sourceFilters || ['*']).join(', ');
+                    const conns = activeConnsByUser[u.username] || 1;
+                    
+                    // Connection limit indicator
+                    let connLimitClass = 'ok';
+                    if (conns >= maxConnsPerUser) connLimitClass = 'danger';
+                    else if (conns >= maxConnsPerUser - 1) connLimitClass = 'warning';
+                    
                     const toggleBtn = u.isAdmin ? '' : (u.isBroadcaster
-                        ? `<button class="secondary" style="padding:4px 8px;font-size:10px;" onclick="toggleBroadcaster('${u.username}', false)">↓</button>`
-                        : `<button style="padding:4px 8px;font-size:10px;" onclick="toggleBroadcaster('${u.username}', true)">↑</button>`);
-                    tbody.innerHTML += `
-                        <tr>
-                            <td><strong>${u.username}</strong></td>
-                            <td><span class="badge ${role}">${label}</span></td>
-                            <td style="opacity: 0.7; font-size: 11px;">${filters}</td>
-                            <td style="opacity: 0.7; font-size: 11px;">${u.ip || 'N/A'}</td>
-                            <td>${formatDuration(u.connectedFor)}</td>
-                            <td>${u.messagesReceived}</td>
-                            <td>
-                                ${toggleBtn}
-                                <button class="secondary" style="padding:4px 8px;font-size:10px;" onclick="kickUser('${u.username}')">Kick</button>
-                                <button class="danger" style="padding:4px 8px;font-size:10px;" onclick="banUser('${u.username}')">Ban</button>
-                            </td>
-                        </tr>
+                        ? `<button class="secondary" style="padding:4px 8px;font-size:10px;" onclick="event.stopPropagation(); toggleBroadcaster('${u.username}', false)">↓</button>`
+                        : `<button style="padding:4px 8px;font-size:10px;" onclick="event.stopPropagation(); toggleBroadcaster('${u.username}', true)">↑</button>`);
+                    
+                    const tr = document.createElement('tr');
+                    tr.className = 'clickable';
+                    tr.onclick = () => getUserDetail(u.username);
+                    tr.innerHTML = `
+                        <td><strong>${u.username}</strong></td>
+                        <td><span class="badge ${role}">${label}</span></td>
+                        <td style="opacity: 0.7; font-size: 11px;">${filters}</td>
+                        <td style="opacity: 0.7; font-size: 11px;">${u.ip || 'N/A'}</td>
+                        <td><span class="conn-limit ${connLimitClass}">${conns}/${maxConnsPerUser}</span></td>
+                        <td>${formatDuration(u.connectedFor)}</td>
+                        <td>${u.messagesReceived}</td>
+                        <td>
+                            ${toggleBtn}
+                            <button class="secondary" style="padding:4px 8px;font-size:10px;" onclick="event.stopPropagation(); kickUser('${u.username}')">Kick</button>
+                            <button class="danger" style="padding:4px 8px;font-size:10px;" onclick="event.stopPropagation(); banUser('${u.username}')">Ban</button>
+                        </td>
                     `;
+                    tbody.appendChild(tr);
                 });
             }
+        }
+
+        function updateActivityFeed(broadcasts) {
+            const feed = document.getElementById('activityFeed');
+            
+            if (broadcasts.length === 0) {
+                feed.innerHTML = '<p style="opacity: 0.5; text-align: center; padding: 20px;">No recent broadcasts</p>';
+                return;
+            }
+            
+            feed.innerHTML = broadcasts.map(b => {
+                const time = new Date(b.timestamp).toLocaleTimeString();
+                return `
+                    <div class="activity-item broadcast">
+                        <span class="time">${time}</span>
+                        <span class="icon">📡</span>
+                        <span><strong>${b.source}</strong>: ${b.title.substring(0, 50)}${b.title.length > 50 ? '...' : ''} → ${b.recipients} users</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getUserDetail(username) {
+            if (ws?.readyState === WebSocket.OPEN) {
+                ws.send(`admin user_detail ${adminPassword} ${username}`);
+            }
+        }
+
+        function showUserDetailModal(data) {
+            document.getElementById('modalUsername').textContent = data.username;
+            document.getElementById('modalActiveConns').textContent = data.activeConnections || 0;
+            
+            const summary = data.summary || {};
+            document.getElementById('modalTotalConns').textContent = summary.total_connections || 0;
+            document.getElementById('modalTotalDisconns').textContent = summary.total_disconnections || 0;
+            document.getElementById('modalAuthFails').textContent = summary.auth_failures || 0;
+            document.getElementById('modalTimesKicked').textContent = summary.times_kicked || 0;
+            document.getElementById('modalFirstSeen').textContent = formatTime(summary.first_seen);
+            document.getElementById('modalLastSeen').textContent = formatTime(summary.last_seen);
+            
+            // Populate history table
+            const historyTable = document.getElementById('modalHistoryTable');
+            const history = data.history || [];
+            
+            if (history.length === 0) {
+                historyTable.innerHTML = '<tr><td colspan="4" style="text-align: center; opacity: 0.5;">No history available</td></tr>';
+            } else {
+                historyTable.innerHTML = history.map(h => {
+                    const eventColors = {
+                        'connect': '#27ae60',
+                        'disconnect': '#e74c3c',
+                        'auth_fail': '#e67e22',
+                        'kicked': '#9b59b6',
+                        'banned': '#c0392b'
+                    };
+                    const color = eventColors[h.event_type] || '#fff';
+                    return `
+                        <tr>
+                            <td>${formatTime(h.created_at)}</td>
+                            <td style="color: ${color}; font-weight: 600;">${h.event_type}</td>
+                            <td style="opacity: 0.7;">${h.ip || '-'}</td>
+                            <td style="opacity: 0.7;">${h.disconnect_reason || '-'}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+            
+            document.getElementById('userDetailModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('userDetailModal').classList.remove('active');
         }
 
         function getStats() {
@@ -546,7 +911,6 @@
                 image: document.getElementById('bcImage').value.trim()
             };
 
-            // Only title and source are required
             if (!data.title) { alert('Title is required'); return; }
             if (!data.source) { alert('Source is required'); return; }
 
@@ -593,6 +957,16 @@
             const cmd = makeBroadcaster ? 'add_broadcaster' : 'remove_broadcaster';
             ws.send(`admin ${cmd} ${adminPassword} ${username}`);
         }
+
+        // Close modal on escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        // Close modal on overlay click
+        document.getElementById('userDetailModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) closeModal();
+        });
 
         setInterval(getStats, 5000);
     </script>

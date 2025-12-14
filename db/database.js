@@ -140,6 +140,120 @@ class Database {
     async close() {
         await this.pool.end();
     }
+
+    // ===== Connection Events Methods =====
+
+    // Log a connection event
+    async logConnectionEvent(username, ip, eventType, reason = null) {
+        try {
+            await this.query(
+                `INSERT INTO connection_events (username, ip, event_type, disconnect_reason) 
+                 VALUES ($1, $2, $3, $4)`,
+                [username, ip, eventType, reason]
+            );
+        } catch (error) {
+            console.error('[DB ERROR] Failed to log connection event:', error.message);
+        }
+    }
+
+    // Get connection history for a specific user
+    async getConnectionHistory(username, limit = 50) {
+        try {
+            const result = await this.query(
+                `SELECT id, ip, event_type, disconnect_reason, created_at 
+                 FROM connection_events 
+                 WHERE username = $1 
+                 ORDER BY created_at DESC 
+                 LIMIT $2`,
+                [username, limit]
+            );
+            return result.rows;
+        } catch (error) {
+            console.error('[DB ERROR] Failed to get connection history:', error.message);
+            return [];
+        }
+    }
+
+    // Get aggregated connection stats for graphs
+    async getConnectionStats(hoursBack = 24) {
+        try {
+            // Get hourly event counts
+            const result = await this.query(
+                `SELECT 
+                    date_trunc('hour', created_at) as hour,
+                    event_type,
+                    COUNT(*) as count
+                 FROM connection_events 
+                 WHERE created_at > NOW() - INTERVAL '${hoursBack} hours'
+                 GROUP BY date_trunc('hour', created_at), event_type
+                 ORDER BY hour ASC`,
+                []
+            );
+            return result.rows;
+        } catch (error) {
+            console.error('[DB ERROR] Failed to get connection stats:', error.message);
+            return [];
+        }
+    }
+
+    // Get recent events across all users
+    async getRecentEvents(limit = 20) {
+        try {
+            const result = await this.query(
+                `SELECT id, username, ip, event_type, disconnect_reason, created_at 
+                 FROM connection_events 
+                 ORDER BY created_at DESC 
+                 LIMIT $1`,
+                [limit]
+            );
+            return result.rows;
+        } catch (error) {
+            console.error('[DB ERROR] Failed to get recent events:', error.message);
+            return [];
+        }
+    }
+
+    // Get user connection summary (for user detail view)
+    async getUserConnectionSummary(username) {
+        try {
+            const result = await this.query(
+                `SELECT 
+                    COUNT(*) FILTER (WHERE event_type = 'connect') as total_connections,
+                    COUNT(*) FILTER (WHERE event_type = 'disconnect') as total_disconnections,
+                    COUNT(*) FILTER (WHERE event_type = 'auth_fail') as auth_failures,
+                    COUNT(*) FILTER (WHERE event_type = 'kicked') as times_kicked,
+                    MIN(created_at) as first_seen,
+                    MAX(created_at) as last_seen
+                 FROM connection_events 
+                 WHERE username = $1`,
+                [username]
+            );
+            return result.rows[0] || null;
+        } catch (error) {
+            console.error('[DB ERROR] Failed to get user connection summary:', error.message);
+            return null;
+        }
+    }
+
+    // Cleanup old events (older than 7 days) - run weekly
+    async cleanupOldEvents() {
+        try {
+            const result = await this.query(
+                `DELETE FROM connection_events 
+                 WHERE created_at < NOW() - INTERVAL '7 days'
+                 RETURNING id`
+            );
+            const deleted = result.rowCount || 0;
+            if (deleted > 0) {
+                console.log(`[DB] Cleaned up ${deleted} old connection events`);
+            }
+            return deleted;
+        } catch (error) {
+            console.error('[DB ERROR] Failed to cleanup old events:', error.message);
+            return 0;
+        }
+    }
 }
 
 module.exports = Database;
+
