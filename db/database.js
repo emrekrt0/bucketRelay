@@ -177,17 +177,20 @@ class Database {
     // Get aggregated connection stats for graphs
     async getConnectionStats(hoursBack = 24) {
         try {
-            // Get hourly event counts
+            // Validate hoursBack is a positive integer to prevent injection
+            const validHours = Math.max(1, Math.min(168, parseInt(hoursBack) || 24)); // 1h to 7 days
+
+            // Get hourly event counts using parameterized interval
             const result = await this.query(
                 `SELECT 
                     date_trunc('hour', created_at) as hour,
                     event_type,
                     COUNT(*) as count
                  FROM connection_events 
-                 WHERE created_at > NOW() - INTERVAL '${hoursBack} hours'
+                 WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL
                  GROUP BY date_trunc('hour', created_at), event_type
                  ORDER BY hour ASC`,
-                []
+                [validHours.toString()]
             );
             return result.rows;
         } catch (error) {

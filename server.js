@@ -16,6 +16,7 @@ const MAX_MESSAGE_SIZE = 100000; // 100KB max message size (for messages with lo
 const RATE_LIMIT_MESSAGES = 100; // messages per minute (broadcasters only can send)
 const RATE_LIMIT_WINDOW = 60000; // 1 minute
 const MAX_CONNECTIONS_PER_USER = 5; // Max concurrent connections per whitelisted username
+const MAX_CONNECTIONS_PER_IP = 20; // Max concurrent connections per IP address (DoS protection)
 const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // Daily cleanup check (weekly retention)
 
 class WebSocketServer {
@@ -40,6 +41,9 @@ class WebSocketServer {
 
         // Recent broadcasts for activity feed (last 20)
         this.recentBroadcasts = [];
+
+        // IP connection tracking (for DoS protection)
+        this.connectionsPerIP = new Map(); // ip -> count
     }
 
     async start() {
@@ -84,6 +88,15 @@ class WebSocketServer {
         if (ip && ip.startsWith('::ffff:')) {
             ip = ip.substring(7);
         }
+
+        // IP-based connection rate limiting (DoS protection)
+        const currentIPConns = this.connectionsPerIP.get(ip) || 0;
+        if (currentIPConns >= MAX_CONNECTIONS_PER_IP) {
+            logger.info(`IP rate limit exceeded: ${ip} (${currentIPConns} connections)`);
+            ws.close(1008, 'Too many connections from this IP');
+            return;
+        }
+        this.connectionsPerIP.set(ip, currentIPConns + 1);
 
         logger.connectionOpened(clientId, ip);
 
@@ -465,6 +478,19 @@ class WebSocketServer {
             return;
         }
 
+        // Validate target as username for user-related commands
+        // (connection_stats uses numeric target, so skip validation for it)
+        if (command !== 'connection_stats') {
+            const targetValidation = validateUsername(target);
+            if (!targetValidation.valid) {
+                client.ws.send(JSON.stringify({
+                    type: 'error',
+                    message: `Invalid target username: ${targetValidation.error}`
+                }));
+                return;
+            }
+        }
+
         try {
             switch (command) {
                 case 'add_user':
@@ -694,6 +720,17 @@ class WebSocketServer {
         this.stats.totalDisconnections++;
         logger.connectionClosed(clientId, client.username, 'Client disconnected');
         this.rateLimiter.reset(clientId);
+
+        // Decrement IP connection count
+        if (client.ip) {
+            const ipConns = this.connectionsPerIP.get(client.ip) || 1;
+            if (ipConns <= 1) {
+                this.connectionsPerIP.delete(client.ip);
+            } else {
+                this.connectionsPerIP.set(client.ip, ipConns - 1);
+            }
+        }
+
         this.clients.delete(clientId);
     }
 
