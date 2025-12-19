@@ -11,7 +11,7 @@ const {
 
 const PORT = process.env.PORT || 8080;
 const AUTH_TIMEOUT_MS = 30000; // 30 seconds to authenticate
-const PING_INTERVAL_MS = 15000; // 15 seconds ping interval
+const PING_INTERVAL_MS = 30000; // 30 seconds ping interval (gives time for pong response)
 const MAX_MESSAGE_SIZE = 100000; // 100KB max message size (for messages with long URLs)
 const RATE_LIMIT_MESSAGES = 100; // messages per minute (broadcasters only can send)
 const RATE_LIMIT_WINDOW = 60000; // 1 minute
@@ -115,6 +115,15 @@ class WebSocketServer {
             logger.error('WebSocket error', { clientId, error: error.message });
         });
 
+        // Handle pong response - mark connection as alive
+        ws.on('pong', () => {
+            const c = this.clients.get(clientId);
+            if (c) {
+                c.isAlive = true;
+                logger.info('Pong received', { clientId, username: c.username });
+            }
+        });
+
         // Store client info
         const authTimer = setTimeout(() => {
             if (!this.clients.get(clientId)?.authenticated) {
@@ -139,7 +148,8 @@ class WebSocketServer {
             authTimer,
             ip,
             connectedAt: Date.now(),
-            messagesReceived: 0
+            messagesReceived: 0,
+            isAlive: true  // Track pong responses for stale connection detection
         });
 
         // Send welcome message
@@ -695,6 +705,27 @@ class WebSocketServer {
     sendPings() {
         for (const [clientId, client] of this.clients.entries()) {
             if (client.ws.readyState === WebSocket.OPEN) {
+                // Check if connection is stale (didn't respond to previous ping)
+                if (client.isAlive === false) {
+                    logger.warn('Terminating stale connection (no pong)', {
+                        clientId,
+                        username: client.username,
+                        ip: client.ip
+                    });
+
+                    // Log stale disconnect event if authenticated
+                    if (client.authenticated && client.username) {
+                        this.db.logConnectionEvent(client.username, client.ip, 'disconnect', 'Stale connection (no pong)');
+                    }
+
+                    // Force close - this will trigger handleDisconnect
+                    client.ws.terminate();
+                    continue;
+                }
+
+                // Mark as not alive, will be set to true on pong response
+                client.isAlive = false;
+
                 try {
                     client.ws.ping();
                 } catch (error) {
