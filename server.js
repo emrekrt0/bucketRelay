@@ -643,9 +643,10 @@ class WebSocketServer {
         if (!client) return;
 
         const now = Date.now();
-        const connectedUsers = Array.from(this.clients.values())
-            .filter(c => c.authenticated)
-            .map(c => ({
+        const connectedUsers = Array.from(this.clients.entries())
+            .filter(([id, c]) => c.authenticated)
+            .map(([id, c]) => ({
+                clientId: id,
                 username: c.username,
                 isBroadcaster: c.isBroadcaster,
                 isAdmin: c.isAdmin,

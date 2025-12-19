@@ -573,6 +573,7 @@
                 <table>
                     <thead>
                         <tr>
+                            <th>ID</th>
                             <th>Username</th>
                             <th>Role</th>
                             <th>Filters</th>
@@ -811,6 +812,7 @@
                     tr.className = 'clickable';
                     tr.onclick = () => getUserDetail(u.username);
                     tr.innerHTML = `
+                        <td style="opacity: 0.5; font-size: 11px;">#${u.clientId || '?'}</td>
                         <td><strong>${u.username}</strong></td>
                         <td><span class="badge ${role}">${label}</span></td>
                         <td style="opacity: 0.7; font-size: 11px;">${filters}</td>
