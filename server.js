@@ -118,10 +118,7 @@ class WebSocketServer {
         // Handle pong response - mark connection as alive
         ws.on('pong', () => {
             const c = this.clients.get(clientId);
-            if (c) {
-                c.isAlive = true;
-                logger.info('Pong received', { clientId, username: c.username });
-            }
+            if (c) c.isAlive = true;
         });
 
         // Store client info
